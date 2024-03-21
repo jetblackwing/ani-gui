@@ -1,0 +1,6 @@
+data/com.ajk.anigui.desktop.in
+data/com.ajk.anigui.metainfo.xml.in
+data/com.ajk.anigui.gschema.xml
+src/main.py
+src/window.py
+src/window.ui
