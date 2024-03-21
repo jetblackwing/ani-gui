@@ -53,9 +53,9 @@ class AniGuiApplication(Gtk.Application):
                                 modal=True,
                                 program_name='ani-gui',
                                 logo_icon_name='com.ajk.anigui',
-                                version='0.1.0',
-                                authors=['Amal'],
-                                copyright='© 2024 Amal')
+                                version='1.0',
+                                authors=['Amal JK'],
+                                copyright='© 2024 github.com/jetblackwing')
         about.present()
 
     def on_preferences_action(self, widget, _):

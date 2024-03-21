@@ -18,7 +18,7 @@
     </property>
     <property name="child">
       <object class="GtkLabel" id="label">
-        <property name="label">Hello, World!</property>
+        <property name="label">Welcome to ani-gui.</property>
         <style>
           <class name="title-1"/>
         </style>
