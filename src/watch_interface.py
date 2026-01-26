@@ -212,10 +212,12 @@ class WatchInterfaceWidget(Gtk.Box):
         
         if response == Gtk.ResponseType.OK and anime_name:
             self.current_anime = anime_name
-            self.status_label.set_text(f"Streaming: {anime_name} (episode {episode})")
+            button.set_sensitive(False)
+            self.status_label.set_text(f"🎬 Loading {anime_name}... (fzf menu will appear)")
             
             # Play using ani-cli with fzf
             def play_callback(success, message):
+                GLib.idle_add(lambda: button.set_sensitive(True))
                 GLib.idle_add(lambda: self.status_label.set_text(message))
                 if success:
                     # Add to history

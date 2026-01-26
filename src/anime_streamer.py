@@ -36,7 +36,13 @@ class AnimeStreamer:
     """Anime streamer using ani-cli with fzf (no rofi required)."""
     
     def __init__(self):
-        self.ani_cli_path = "/usr/bin/ani-cli"
+        # Use wrapper script that forces fzf instead of rofi
+        import os as os_module
+        wrapper_path = os_module.path.join(
+            os_module.path.dirname(os_module.path.dirname(__file__)),
+            "ani-cli-wrapper.sh"
+        )
+        self.ani_cli_path = wrapper_path if os_module.path.exists(wrapper_path) else "/usr/bin/ani-cli"
         self.current_process = None
     
     def play_anime(self, anime_name: str, episode: Optional[str] = None,
@@ -52,6 +58,16 @@ class AnimeStreamer:
         """
         def play_thread():
             try:
+                # Verify wrapper and ani-cli available
+                import subprocess as sp
+                check = sp.run(
+                    [self.ani_cli_path, "--version"],
+                    capture_output=True,
+                    timeout=5
+                )
+                if check.returncode != 0:
+                    raise Exception("ani-cli not responding")
+                
                 cmd = [self.ani_cli_path]
                 
                 if episode:
@@ -62,22 +78,22 @@ class AnimeStreamer:
                 
                 cmd.append(anime_name)
                 
-                print(f"[ani-gui] Launching ani-cli: {' '.join(cmd)}")
+                print(f"[ani-gui] Command: {' '.join(cmd)}")
+                print(f"[ani-gui] Using ani-cli path: {self.ani_cli_path}")
                 
-                # Set environment to use fzf instead of rofi
+                # Set environment to use fzf
                 env = os.environ.copy()
-                env["use_external_menu"] = "0"  # Force ani-cli to use fzf
+                env["use_external_menu"] = "0"  # Force fzf
                 
-                # Start ani-cli process
-                # Don't capture output - let it use interactive terminal
+                # Start ani-cli process - DON'T capture I/O so interactive menus work
                 self.current_process = subprocess.Popen(
                     cmd,
                     env=env,
-                    # stdin/stdout/stderr connected to terminal for interactivity
+                    # Let stdin/stdout/stderr connect to terminal for fzf/mpv interaction
                 )
                 
                 if callback:
-                    GLib.idle_add(callback, True, f"Streaming: {anime_name}")
+                    GLib.idle_add(callback, True, f"▶️  Streaming: {anime_name}")
                 
                 # Wait for process to finish
                 self.current_process.wait()
@@ -85,14 +101,24 @@ class AnimeStreamer:
                 
                 if return_code == 0:
                     if callback:
-                        GLib.idle_add(callback, True, f"Finished: {anime_name}")
+                        GLib.idle_add(callback, True, f"✅ Finished: {anime_name}")
                 else:
                     if callback:
-                        GLib.idle_add(callback, False, f"Streaming ended (code: {return_code})")
+                        if return_code == 130:
+                            msg = "⏹️ Playback stopped by user"
+                        else:
+                            msg = f"⚠️ Playback ended (code: {return_code})"
+                        GLib.idle_add(callback, False, msg)
                 
+            except FileNotFoundError as e:
+                if callback:
+                    msg = f"❌ ani-cli wrapper not found at {self.ani_cli_path}\nEnsure ani-cli-wrapper.sh exists"
+                    GLib.idle_add(callback, False, msg)
+                print(f"[ani-gui] File not found: {e}")
             except Exception as e:
                 if callback:
-                    GLib.idle_add(callback, False, f"Error: {str(e)}")
+                    msg = f"❌ Error: {str(e)}\nMake sure ani-cli and fzf are installed"
+                    GLib.idle_add(callback, False, msg)
                 print(f"[ani-gui] Streaming error: {e}")
         
         thread = threading.Thread(target=play_thread, daemon=True)
