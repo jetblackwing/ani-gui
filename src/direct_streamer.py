@@ -161,8 +161,16 @@ class DirectStreamer:
             return None
     
     def play_direct(self, anime_name: str, episode: str = "1",
-                   callback: Optional[Callable] = None):
-        """Search for anime and play directly (auto-select first result)."""
+                   callback: Optional[Callable] = None,
+                   video_player = None):
+        """Search for anime and play directly (auto-select first result).
+        
+        Args:
+            anime_name: Anime name to search
+            episode: Episode number
+            callback: Status callback (success, message)
+            video_player: VideoPlayerWidget to use for playback (if provided)
+        """
         
         def play_thread():
             try:
@@ -197,20 +205,27 @@ class DirectStreamer:
                 if callback:
                     GLib.idle_add(callback, None, f"▶️  Starting playback...")
                 
-                # Play with mpv
-                self.current_process = subprocess.Popen(
-                    ["mpv", "--force-media-title=" + title + f" Ep {episode}", link],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
-                )
-                
-                print(f"[DirectStreamer] Started mpv, PID: {self.current_process.pid}")
-                
-                # Wait for playback to finish
-                self.current_process.wait()
-                
-                if callback:
-                    GLib.idle_add(callback, True, f"✅ Finished: {title} Episode {episode}")
+                # Play with embedded player or mpv
+                if video_player:
+                    # Use embedded video player
+                    GLib.idle_add(video_player.play, link, f"{title} - Episode {episode}")
+                    if callback:
+                        GLib.idle_add(callback, True, f"✅ Finished: {title} Episode {episode}")
+                else:
+                    # Fallback to mpv
+                    self.current_process = subprocess.Popen(
+                        ["mpv", "--force-media-title=" + title + f" Ep {episode}", link],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+                    
+                    print(f"[DirectStreamer] Started mpv, PID: {self.current_process.pid}")
+                    
+                    # Wait for playback to finish
+                    self.current_process.wait()
+                    
+                    if callback:
+                        GLib.idle_add(callback, True, f"✅ Finished: {title} Episode {episode}")
                 
             except FileNotFoundError as e:
                 if callback:

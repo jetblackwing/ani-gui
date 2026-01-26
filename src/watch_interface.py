@@ -22,6 +22,7 @@ from typing import List, Optional, Callable, Dict
 import threading
 from .direct_streamer import DirectStreamer
 from .watch_history import WatchHistory
+from .video_player import VideoPlayerWidget
 
 
 class SearchResultsDialog(Gtk.Dialog):
