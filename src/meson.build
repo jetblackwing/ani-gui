@@ -34,6 +34,7 @@ ani_gui_sources = [
   'thumbnail_cache.py',
   'video_player.py',
   'search_handler.py',
+  'ani_cli_integration.py',
 ]
 
 install_data(ani_gui_sources, install_dir: moduledir)
