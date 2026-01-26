@@ -35,6 +35,7 @@ ani_gui_sources = [
   'video_player.py',
   'search_handler.py',
   'ani_cli_integration.py',
+  'anime_streamer.py',
   'media_player.py',
   'watch_history.py',
   'watch_interface.py',

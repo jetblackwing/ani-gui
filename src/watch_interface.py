@@ -18,24 +18,24 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 from gi.repository import Gtk, GLib
-from typing import List, Optional, Callable
-from .ani_cli_integration import AniCliIntegration
+from typing import List, Optional, Callable, Dict
+import threading
+from .anime_streamer import AnimeStreamer
 from .watch_history import WatchHistory
-from .anilist_api import AniListAPI
 
 
 class SearchResultsDialog(Gtk.Dialog):
-    """Dialog showing search results from ani-cli."""
+    """Dialog for entering anime search query."""
     
-    def __init__(self, results: List[str], parent=None):
+    def __init__(self, parent=None):
         super().__init__(
-            title="Select Anime",
+            title="Search Anime",
             modal=True,
             transient_for=parent
         )
         
-        self.selected = None
-        self.set_default_size(400, 500)
+        self.anime_name = None
+        self.set_default_size(400, 200)
         
         # Main content area
         content = self.get_content_area()
@@ -46,41 +46,58 @@ class SearchResultsDialog(Gtk.Dialog):
         content.set_margin_end(10)
         
         # Instructions
-        info = Gtk.Label(label="Found anime. Click to select:")
+        info = Gtk.Label(label="Enter anime name to search and stream:")
         info.set_wrap(True)
         content.append(info)
         
-        # Scrolled list of results
-        scrolled = Gtk.ScrolledWindow(
-            hexpand=True,
-            vexpand=True
+        # Search entry
+        self.entry = Gtk.SearchEntry(
+            placeholder_text="e.g., One Piece, Attack on Titan"
         )
+        content.append(self.entry)
         
-        results_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        # Episode info
+        episode_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        episode_label = Gtk.Label(label="Episode (optional):")
+        episode_box.append(episode_label)
+        self.episode_spin = Gtk.SpinButton(
+            adjustment=Gtk.Adjustment(1, 1, 999, 1),
+            digits=0
+        )
+        episode_box.append(self.episode_spin)
+        content.append(episode_box)
         
-        for result in results:
-            button = Gtk.Button(label=result)
-            button.connect("clicked", self.on_result_selected, result)
-            results_box.append(button)
-        
-        scrolled.set_child(results_box)
-        content.append(scrolled)
+        # Quality selector
+        quality_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        quality_label = Gtk.Label(label="Quality:")
+        quality_box.append(quality_label)
+        self.quality_combo = Gtk.ComboBoxText()
+        self.quality_combo.append("best", "Best")
+        self.quality_combo.append("1080", "1080p")
+        self.quality_combo.append("720", "720p")
+        self.quality_combo.set_active_id("best")
+        quality_box.append(self.quality_combo)
+        content.append(quality_box)
         
         # Action buttons
         self.add_buttons(
             "Cancel", Gtk.ResponseType.CANCEL,
-            "Watch", Gtk.ResponseType.OK
+            "Stream", Gtk.ResponseType.OK
         )
         self.set_default_response(Gtk.ResponseType.OK)
     
-    def on_result_selected(self, button, result):
-        """Handle result selection."""
-        self.selected = result
-        self.response(Gtk.ResponseType.OK)
+    def get_anime_name(self) -> str:
+        return self.entry.get_text()
+    
+    def get_episode(self) -> int:
+        return int(self.episode_spin.get_value())
+    
+    def get_quality(self) -> str:
+        return self.quality_combo.get_active_id()
 
 
 class WatchInterfaceWidget(Gtk.Box):
-    """Complete watch interface with search, history, and player controls."""
+    """Complete watch interface with search, history, and streaming."""
     
     def __init__(self):
         super().__init__(
@@ -92,14 +109,15 @@ class WatchInterfaceWidget(Gtk.Box):
             margin_end=10
         )
         
-        self.ani_cli = AniCliIntegration()
+        self.streamer = AnimeStreamer()
         self.history = WatchHistory()
-        self.api = AniListAPI()
         self.current_anime = None
+        self.current_show_id = None
+        self.streaming_links = {}
         
         # Title
         title = Gtk.Label(
-            label="Watch Anime with ani-cli",
+            label="Watch Anime (Direct Streaming)",
             css_classes=["title-1"]
         )
         self.append(title)
@@ -184,46 +202,32 @@ class WatchInterfaceWidget(Gtk.Box):
         self.update_categories()
     
     def on_search_clicked(self, button):
-        """Handle search button click."""
-        query = self.search_entry.get_text()
-        if not query:
-            self.status_label.set_text("Please enter a search term")
-            return
-        
-        self.status_label.set_text(f"Searching for '{query}'...")
-        
-        # Search using ani-cli
-        self.ani_cli.search_anime_interactive(query, self.on_search_complete)
-    
-    def on_search_complete(self, results: Optional[List[str]], error: Optional[str]):
-        """Callback when search completes."""
-        if error:
-            self.status_label.set_text(f"Error: {error}")
-            return
-        
-        if not results:
-            self.status_label.set_text("No results found")
-            return
-        
-        # Show results dialog
-        dialog = SearchResultsDialog(results, parent=self.get_root())
+        """Handle search button click - shows dialog for anime name."""
+        dialog = SearchResultsDialog(parent=self.get_root())
         response = dialog.run()
-        selected = dialog.selected
+        anime_name = dialog.get_anime_name()
+        episode = dialog.get_episode() if dialog.episode_spin.get_value() > 0 else None
+        quality = dialog.get_quality()
         dialog.close()
         
-        if selected and response == Gtk.ResponseType.OK:
-            self.status_label.set_text(f"Selected: {selected}")
-            self.current_anime = selected
+        if response == Gtk.ResponseType.OK and anime_name:
+            self.current_anime = anime_name
+            self.status_label.set_text(f"Streaming: {anime_name} (episode {episode})")
             
-            # Here you would start watching with ani-cli
-            # For now just add to history
-            if selected:
-                self.history.add_watch(
-                    anime_id=hash(selected) % 1000000,
-                    anime_title=selected,
-                    categories=["User Selection"]
-                )
-                self.update_history_display()
+            # Play using ani-cli with fzf
+            def play_callback(success, message):
+                GLib.idle_add(lambda: self.status_label.set_text(message))
+                if success:
+                    # Add to history
+                    self.history.add_watch(
+                        anime_id=hash(anime_name) % 1000000,
+                        anime_title=anime_name,
+                        episode=episode,
+                        categories=["Streamed"]
+                    )
+                    GLib.idle_add(self.update_history_display)
+            
+            self.streamer.play_anime(anime_name, episode, quality, play_callback)
     
     def on_category_changed(self, combo):
         """Handle category filter change."""
