@@ -293,7 +293,7 @@ class WatchInterfaceWidget(Gtk.Box):
         self.status_label.set_text("Refreshed")
     
     def update_history_display(self):
-        """Update the watch history display."""
+        """Update the watch history display with better formatting."""
         # Clear current display
         while True:
             child = self.history_box.get_first_child()
@@ -309,25 +309,97 @@ class WatchInterfaceWidget(Gtk.Box):
             items = self.history.get_by_category(category)
         
         if not items:
-            empty_label = Gtk.Label(label="No watch history")
-            empty_label.add_css_class("dim-label")
-            self.history_box.append(empty_label)
+            empty_box = Gtk.Box(
+                orientation=Gtk.Orientation.VERTICAL,
+                spacing=5,
+                halign=Gtk.Align.CENTER,
+                valign=Gtk.Align.CENTER,
+                hexpand=True,
+                vexpand=True
+            )
+            empty_label = Gtk.Label(
+                label="📭 No watch history",
+                css_classes=["title-3"]
+            )
+            empty_box.append(empty_label)
+            empty_hint = Gtk.Label(
+                label="Search for an anime and stream to start!",
+                css_classes=["dim-label"]
+            )
+            empty_box.append(empty_hint)
+            self.history_box.append(empty_box)
             return
         
-        # Add history items
-        for item in items:
-            row = Gtk.Box(
+        # Add history items with improved styling
+        for i, item in enumerate(items):
+            # Create expandable row
+            row_box = Gtk.Box(
                 orientation=Gtk.Orientation.VERTICAL,
-                spacing=3,
-                margin_top=5,
-                margin_bottom=5,
-                margin_start=10,
-                margin_end=10
+                spacing=0,
+                css_classes=["history-item"]
+            )
+            row_box.set_margin_top(8)
+            row_box.set_margin_bottom(8)
+            row_box.set_margin_start(10)
+            row_box.set_margin_end(10)
+            
+            # Header with title and episode
+            header = Gtk.Box(
+                orientation=Gtk.Orientation.HORIZONTAL,
+                spacing=15
             )
             
-            # Title
+            # Anime title (bold)
             title = Gtk.Label(
-                label=item['anime_title'],
+                label=f"▶️ {item['anime_title']}",
+                xalign=0
+            )
+            title.set_markup(f"<b>▶️ {item['anime_title']}</b>")
+            title.set_hexpand(True)
+            header.append(title)
+            
+            # Episode info
+            episode_text = f"EP {item['episode']}"
+            episode = Gtk.Label(
+                label=episode_text,
+                css_classes=["dim-label"]
+            )
+            header.append(episode)
+            
+            row_box.append(header)
+            
+            # Details (subtitle)
+            if item.get('categories'):
+                categories = ', '.join(item['categories'])
+                details = Gtk.Label(
+                    label=f"  {categories}",
+                    xalign=0,
+                    css_classes=["dim-label"]
+                )
+                row_box.append(details)
+            
+            # Timestamp
+            if item.get('timestamp'):
+                from datetime import datetime
+                try:
+                    dt = datetime.fromisoformat(item['timestamp'])
+                    time_text = dt.strftime("Last watched: %b %d at %H:%M")
+                except:
+                    time_text = item['timestamp']
+                
+                time_label = Gtk.Label(
+                    label=f"  {time_text}",
+                    xalign=0,
+                    css_classes=["dim-label", "small"]
+                )
+                row_box.append(time_label)
+            
+            # Add separator
+            if i < len(items) - 1:
+                separator = Gtk.Separator()
+                row_box.append(separator)
+            
+            self.history_box.append(row_box)
                 xalign=0,
                 css_classes=["heading"]
             )
