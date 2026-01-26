@@ -30,6 +30,10 @@ ani_gui_sources = [
   '__init__.py',
   'main.py',
   'window.py',
+  'anilist_api.py',
+  'thumbnail_cache.py',
+  'video_player.py',
+  'search_handler.py',
 ]
 
 install_data(ani_gui_sources, install_dir: moduledir)
