@@ -39,6 +39,19 @@ class AniCliIntegration:
         """Check if ani-cli is installed."""
         return self.ani_cli_path is not None
     
+    def get_version(self) -> Optional[str]:
+        """Get the ani-cli version."""
+        try:
+            result = subprocess.run([self.ani_cli_path, '--version'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.stdout:
+                return result.stdout.strip()
+            elif result.stderr:
+                return result.stderr.strip()
+            return "Unknown"
+        except Exception as e:
+            return f"Error: {e}"
+    
     def watch_anime(self, anime_name: str, episode: Optional[int] = None,
                    quality: str = "best", callback: Optional[Callable] = None,
                    terminal_output_callback: Optional[Callable] = None):
@@ -261,19 +274,55 @@ class AniCliIntegration:
                 self.current_process = None
                 self.is_watching = False
     
-    def get_version(self) -> Optional[str]:
-        """Get ani-cli version."""
-        if not self.is_available():
-            return None
+    def search_anime_interactive(self, query: str, callback: Optional[Callable] = None):
+        """Search anime using ani-cli and get all results interactively.
         
-        try:
-            result = subprocess.run(
-                [self.ani_cli_path, '--version'],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            return result.stdout.strip()
-        except Exception as e:
-            print(f"Error getting ani-cli version: {e}")
-            return None
+        Shows menu of search results and lets user select one.
+        
+        Args:
+            query: Search query string
+            callback: Callback function (selected_anime_name, cancelled)
+        """
+        if not self.is_available():
+            if callback:
+                GLib.idle_add(callback, None, "ani-cli not found")
+            return
+        
+        def search_thread():
+            try:
+                # Use ani-cli in non-interactive mode to search
+                # We'll try to get the list by searching
+                cmd = [self.ani_cli_path, query]
+                
+                self.current_process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    stdin=subprocess.PIPE,
+                    text=True,
+                    bufsize=1
+                )
+                
+                # Read available anime from output
+                stdout_lines = []
+                if self.current_process.stdout:
+                    for line in iter(self.current_process.stdout.readline, ''):
+                        if line.strip():
+                            stdout_lines.append(line.strip())
+                
+                # Try to extract anime list from output
+                anime_list = [line for line in stdout_lines if line and not line.startswith('[')]
+                
+                if callback:
+                    GLib.idle_add(callback, anime_list, None)
+            
+            except Exception as e:
+                print(f"Error searching: {e}")
+                if callback:
+                    GLib.idle_add(callback, None, str(e))
+            
+            finally:
+                self.current_process = None
+        
+        thread = threading.Thread(target=search_thread, daemon=True)
+        thread.start()

@@ -20,6 +20,7 @@
 from gi.repository import Gtk, GLib
 from .search_handler import SearchHandler, AnimeSearchRow
 from .video_player import VideoPlayerWidget
+from .watch_interface import WatchInterfaceWidget
 
 
 class AniGuiWindow(Gtk.ApplicationWindow):
@@ -28,15 +29,37 @@ class AniGuiWindow(Gtk.ApplicationWindow):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
-        self.set_default_size(1200, 700)
-        self.set_title("Ani-GUI - Anime Streaming")
+        self.set_default_size(1400, 800)
+        self.set_title("Ani-GUI - Anime Streaming Player")
         
         self.search_handler = SearchHandler()
         self.current_page = 1
         self.has_next_page = False
         
-        # Main container
+        # Main container with tabs
         main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        
+        # Create notebook (tabbed interface)
+        self.notebook = Gtk.Notebook()
+        
+        # Tab 1: Search and Browse
+        search_tab = self._create_search_tab()
+        self.notebook.append_page(search_tab, Gtk.Label(label="🔍 Search & Browse"))
+        
+        # Tab 2: Watch Interface (ani-cli with search results)
+        watch_tab = WatchInterfaceWidget()
+        self.notebook.append_page(watch_tab, Gtk.Label(label="▶ Watch & History"))
+        
+        main_box.append(self.notebook)
+        
+        self.set_child(main_box)
+        
+        # Search on initial load (in first tab)
+        self._trigger_search("Jujutsu Kaisen")
+    
+    def _create_search_tab(self) -> Gtk.Box:
+        """Create the search and browse tab."""
+        tab_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         
         # Header with search
         header_box = Gtk.Box(
@@ -60,7 +83,7 @@ class AniGuiWindow(Gtk.ApplicationWindow):
         search_box.append(self.search_entry)
         
         header_box.append(search_box)
-        main_box.append(header_box)
+        tab_box.append(header_box)
         
         # Content area with paned layout
         paned = Gtk.Paned(
@@ -113,13 +136,10 @@ class AniGuiWindow(Gtk.ApplicationWindow):
         self.video_player = VideoPlayerWidget()
         paned.set_end_child(self.video_player)
         paned.set_resize_end_child(True)
-        paned.set_position(600)
+        paned.set_position(700)
         
-        main_box.append(paned)
-        self.set_child(main_box)
-        
-        # Search on initial load
-        self._trigger_search("Jujutsu Kaisen")
+        tab_box.append(paned)
+        return tab_box
     
     def on_search_changed(self, entry):
         """Handle search entry changes."""
