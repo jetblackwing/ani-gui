@@ -33,16 +33,11 @@ from gi.repository import GLib
 
 
 class AnimeStreamer:
-    """Anime streamer using ani-cli with fzf (no rofi required)."""
+    """Anime streamer using ani-cli with fzf (via fake rofi wrapper)."""
     
     def __init__(self):
-        # Use wrapper script that forces fzf instead of rofi
-        import os as os_module
-        wrapper_path = os_module.path.join(
-            os_module.path.dirname(os_module.path.dirname(__file__)),
-            "ani-cli-wrapper.sh"
-        )
-        self.ani_cli_path = wrapper_path if os_module.path.exists(wrapper_path) else "/usr/bin/ani-cli"
+        # Use the real ani-cli (rofi is now a fzf wrapper in /usr/local/bin)
+        self.ani_cli_path = "/usr/bin/ani-cli"
         self.current_process = None
     
     def play_anime(self, anime_name: str, episode: Optional[str] = None,
@@ -58,7 +53,7 @@ class AnimeStreamer:
         """
         def play_thread():
             try:
-                # Verify wrapper and ani-cli available
+                # Verify ani-cli available
                 import subprocess as sp
                 check = sp.run(
                     [self.ani_cli_path, "--version"],
@@ -66,7 +61,9 @@ class AnimeStreamer:
                     timeout=5
                 )
                 if check.returncode != 0:
-                    raise Exception("ani-cli not responding")
+                    if callback:
+                        GLib.idle_add(callback, False, "❌ ani-cli not responding")
+                    return
                 
                 cmd = [self.ani_cli_path]
                 
@@ -78,48 +75,46 @@ class AnimeStreamer:
                 
                 cmd.append(anime_name)
                 
-                print(f"[ani-gui] Command: {' '.join(cmd)}")
-                print(f"[ani-gui] Using ani-cli path: {self.ani_cli_path}")
+                print(f"[ani-gui] Starting: {' '.join(cmd)}")
                 
-                # Set environment to use fzf
+                # Set environment for fzf
                 env = os.environ.copy()
-                env["use_external_menu"] = "0"  # Force fzf
+                # ani-cli will find /usr/local/bin/rofi (our fake rofi that uses fzf)
                 
-                # Start ani-cli process - DON'T capture I/O so interactive menus work
-                self.current_process = subprocess.Popen(
+                # Start ani-cli - don't capture I/O so fzf/mpv can interact with terminal
+                self.current_process = sp.Popen(
                     cmd,
                     env=env,
-                    # Let stdin/stdout/stderr connect to terminal for fzf/mpv interaction
+                    # stdin/stdout/stderr inherit from parent (terminal)
                 )
                 
-                if callback:
-                    GLib.idle_add(callback, True, f"▶️  Streaming: {anime_name}")
+                print(f"[ani-gui] Process started, PID: {self.current_process.pid}")
                 
-                # Wait for process to finish
+                # Wait for process to complete
+                # This will block until user finishes selecting and watching
                 self.current_process.wait()
                 return_code = self.current_process.returncode
                 
-                if return_code == 0:
-                    if callback:
+                print(f"[ani-gui] Process exited with code: {return_code}")
+                
+                if callback:
+                    if return_code == 0:
                         GLib.idle_add(callback, True, f"✅ Finished: {anime_name}")
-                else:
-                    if callback:
-                        if return_code == 130:
-                            msg = "⏹️ Playback stopped by user"
-                        else:
-                            msg = f"⚠️ Playback ended (code: {return_code})"
-                        GLib.idle_add(callback, False, msg)
+                    elif return_code == 130:
+                        GLib.idle_add(callback, False, "⏹️ Stopped by user")
+                    else:
+                        GLib.idle_add(callback, False, f"⚠️ Playback ended")
                 
             except FileNotFoundError as e:
                 if callback:
-                    msg = f"❌ ani-cli wrapper not found at {self.ani_cli_path}\nEnsure ani-cli-wrapper.sh exists"
+                    msg = f"❌ ani-cli not found\nEnsure installed: sudo apt install ani-cli"
                     GLib.idle_add(callback, False, msg)
                 print(f"[ani-gui] File not found: {e}")
             except Exception as e:
                 if callback:
-                    msg = f"❌ Error: {str(e)}\nMake sure ani-cli and fzf are installed"
+                    msg = f"❌ Error: {str(e)}"
                     GLib.idle_add(callback, False, msg)
-                print(f"[ani-gui] Streaming error: {e}")
+                print(f"[ani-gui] Error: {e}")
         
         thread = threading.Thread(target=play_thread, daemon=True)
         thread.start()
