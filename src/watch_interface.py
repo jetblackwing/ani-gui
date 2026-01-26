@@ -30,52 +30,65 @@ class SearchResultsDialog(Gtk.Dialog):
     
     def __init__(self, parent=None):
         super().__init__(
-            title="Search Anime",
+            title="Stream Anime",
             modal=True,
             transient_for=parent
         )
         
         self.anime_name = None
-        self.set_default_size(400, 200)
+        self.set_default_size(500, 280)
         
         # Main content area
         content = self.get_content_area()
-        content.set_spacing(10)
-        content.set_margin_top(10)
-        content.set_margin_bottom(10)
-        content.set_margin_start(10)
-        content.set_margin_end(10)
+        content.set_spacing(15)
+        content.set_margin_top(15)
+        content.set_margin_bottom(15)
+        content.set_margin_start(15)
+        content.set_margin_end(15)
         
         # Instructions
-        info = Gtk.Label(label="Enter anime name to search and stream:")
-        info.set_wrap(True)
+        info = Gtk.Label(
+            label="<b>Search and Stream Anime</b>",
+            use_markup=True,
+            css_classes=["heading"]
+        )
         content.append(info)
         
         # Search entry
+        search_label = Gtk.Label(label="Anime Name:", xalign=0)
+        content.append(search_label)
         self.entry = Gtk.SearchEntry(
-            placeholder_text="e.g., One Piece, Attack on Titan"
+            placeholder_text="e.g., Naruto, One Piece, Attack on Titan"
         )
         content.append(self.entry)
         
         # Episode info
+        episode_label = Gtk.Label(label="Episode Number:", xalign=0)
+        content.append(episode_label)
         episode_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        episode_label = Gtk.Label(label="Episode (optional):")
-        episode_box.append(episode_label)
         self.episode_spin = Gtk.SpinButton(
-            adjustment=Gtk.Adjustment(1, 1, 999, 1),
-            digits=0
+            adjustment=Gtk.Adjustment(1, 1, 9999, 1),
+            digits=0,
+            width_chars=10
         )
+        self.episode_spin.set_hexpand(False)
         episode_box.append(self.episode_spin)
+        episode_info = Gtk.Label(
+            label="(Leave at 1 for first episode)",
+            css_classes=["dim-label"]
+        )
+        episode_box.append(episode_info)
         content.append(episode_box)
         
         # Quality selector
+        quality_label = Gtk.Label(label="Video Quality:", xalign=0)
+        content.append(quality_label)
         quality_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        quality_label = Gtk.Label(label="Quality:")
-        quality_box.append(quality_label)
         self.quality_combo = Gtk.ComboBoxText()
-        self.quality_combo.append("best", "Best")
-        self.quality_combo.append("1080", "1080p")
-        self.quality_combo.append("720", "720p")
+        self.quality_combo.append("best", "🎯 Best Available (Auto)")
+        self.quality_combo.append("1080", "1080p (Highest)")
+        self.quality_combo.append("720", "720p (Standard)")
+        self.quality_combo.append("480", "480p (Low)")
         self.quality_combo.set_active_id("best")
         quality_box.append(self.quality_combo)
         content.append(quality_box)
@@ -116,6 +129,11 @@ class WatchInterfaceWidget(Gtk.Box):
         self.current_show_id = None
         self.streaming_links = {}
         
+        # Create video player (hidden by default)
+        self.video_player = VideoPlayerWidget()
+        self.video_player.set_on_close_callback(self.on_video_player_closed)
+        self.video_player.set_visible(False)
+        
         # Title
         title = Gtk.Label(
             label="Watch Anime (Direct Streaming)",
@@ -140,6 +158,9 @@ class WatchInterfaceWidget(Gtk.Box):
         search_box.append(search_button)
         
         self.append(search_box)
+        
+        # Add video player (initially hidden, shows when streaming)
+        self.append(self.video_player)
         
         # Category filter
         category_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
@@ -214,10 +235,13 @@ class WatchInterfaceWidget(Gtk.Box):
             self.current_anime = anime_name
             button.set_sensitive(False)
             
+            # Show video player
+            self.video_player.set_visible(True)
+            
             # Show clear status
             self.status_label.set_text(f"🎬 Streaming {anime_name}...")
             
-            # Play using direct API (no interactive menus)
+            # Play using direct API with embedded video player
             def play_callback(success, message):
                 # Re-enable button when done
                 GLib.idle_add(lambda: button.set_sensitive(True))
@@ -234,7 +258,11 @@ class WatchInterfaceWidget(Gtk.Box):
                     )
                     GLib.idle_add(self.update_history_display)
             
-            self.streamer.play_direct(anime_name, episode, play_callback)
+            self.streamer.play_direct(anime_name, episode, play_callback, self.video_player)
+    
+    def on_video_player_closed(self):
+        """Called when video player is closed."""
+        self.video_player.set_visible(False)
     
     def on_category_changed(self, combo):
         """Handle category filter change."""
