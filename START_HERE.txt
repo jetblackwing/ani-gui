@@ -1,0 +1,97 @@
+START_HERE.txt - Ani-GUI Quick Start Instructions
+════════════════════════════════════════════════════════════════════
+
+✅ APPLICATION STATUS: READY TO RUN
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚀 LAUNCH THE APPLICATION
+
+Option 1 (Recommended - Easiest):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  bash run.sh
+
+This automatically sets up the environment and launches the app.
+
+
+Option 2 (Manual - More Control):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  source venv/bin/activate
+  python3 run-app.py
+
+
+Option 3 (Direct Python):
+━━━━━━━━━━━━━━━━━━━━━━━━
+  ./run-app.py
+
+(Make sure venv is activated first)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📋 WHAT THE APP DOES
+
+✓ Search anime from AniList database
+✓ Display cover images and thumbnails
+✓ Show detailed anime information
+✓ Links to AniList pages
+✓ Video player integration
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚙️ SETUP (Only needed once)
+
+If the app doesn't start, run setup:
+
+  bash setup-venv.sh
+
+This installs all required Python packages in a virtual environment.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📚 FILE DESCRIPTIONS
+
+Core Application Files:
+  src/main.py                - Application entry point
+  src/window.py              - Main window UI
+  src/anilist_api.py         - AniList API client
+  src/search_handler.py      - Search functionality
+  src/thumbnail_cache.py     - Image caching
+  src/video_player.py        - Video player widget
+
+Launch Scripts:
+  run.sh                     - Simple launcher (recommended)
+  run-app.py                 - Python launcher with error checking
+  setup-venv.sh              - Environment setup
+
+Documentation:
+  README.md                  - Full project documentation
+  QUICKSTART.md              - Quick reference
+  ARCHITECTURE.md            - Technical architecture
+  REFERENCE.md               - API reference
+
+Configuration:
+  requirements.txt           - Python dependencies
+  meson.build                - Build configuration
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🆘 TROUBLESHOOTING
+
+Problem: "Module not found" errors
+Solution: Make sure venv is activated
+         source venv/bin/activate
+
+Problem: Application won't start
+Solution: Run setup script again
+         bash setup-venv.sh
+
+Problem: Thumbnails don't load
+Solution: Check internet connection (needs AniList.co access)
+
+For more help, see QUICKSTART.md or README.md
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✨ Ready to use! Run one of the launch commands above to start.
+
+Questions? Check the documentation files or review error messages carefully.
