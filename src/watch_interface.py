@@ -20,7 +20,7 @@
 from gi.repository import Gtk, GLib
 from typing import List, Optional, Callable, Dict
 import threading
-from .anime_streamer import AnimeStreamer
+from .direct_streamer import DirectStreamer
 from .watch_history import WatchHistory
 
 
@@ -109,7 +109,7 @@ class WatchInterfaceWidget(Gtk.Box):
             margin_end=10
         )
         
-        self.streamer = AnimeStreamer()
+        self.streamer = DirectStreamer()
         self.history = WatchHistory()
         self.current_anime = None
         self.current_show_id = None
@@ -206,21 +206,17 @@ class WatchInterfaceWidget(Gtk.Box):
         dialog = SearchResultsDialog(parent=self.get_root())
         response = dialog.run()
         anime_name = dialog.get_anime_name()
-        episode = dialog.get_episode() if dialog.episode_spin.get_value() > 0 else None
-        quality = dialog.get_quality()
+        episode = str(dialog.get_episode()) if dialog.episode_spin.get_value() > 0 else "1"
         dialog.close()
         
         if response == Gtk.ResponseType.OK and anime_name:
             self.current_anime = anime_name
             button.set_sensitive(False)
             
-            # Show clear status that includes explanation
-            self.status_label.set_text(
-                f"🎬 Streaming {anime_name}...\n"
-                f"📺 A selection menu will appear in the terminal"
-            )
+            # Show clear status
+            self.status_label.set_text(f"🎬 Streaming {anime_name}...")
             
-            # Play using ani-cli with fzf
+            # Play using direct API (no interactive menus)
             def play_callback(success, message):
                 # Re-enable button when done
                 GLib.idle_add(lambda: button.set_sensitive(True))
@@ -237,7 +233,7 @@ class WatchInterfaceWidget(Gtk.Box):
                     )
                     GLib.idle_add(self.update_history_display)
             
-            self.streamer.play_anime(anime_name, episode, quality, play_callback)
+            self.streamer.play_direct(anime_name, episode, play_callback)
     
     def on_category_changed(self, combo):
         """Handle category filter change."""

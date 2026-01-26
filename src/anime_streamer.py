@@ -81,17 +81,24 @@ class AnimeStreamer:
                 env = os.environ.copy()
                 # ani-cli will find /usr/local/bin/rofi (our fake rofi that uses fzf)
                 
-                # Start ani-cli - don't capture I/O so fzf/mpv can interact with terminal
+                # IMPORTANT: Launch in a real terminal so fzf and mpv can interact with user
+                # Use gnome-terminal or xterm to provide interactive terminal for ani-cli
+                terminal_cmd = [
+                    "gnome-terminal",
+                    "--",
+                    "bash", "-c",
+                    " ".join(cmd) + "; echo 'Press Enter to close...'; read"
+                ]
+                
                 self.current_process = sp.Popen(
-                    cmd,
-                    env=env,
-                    # stdin/stdout/stderr inherit from parent (terminal)
+                    terminal_cmd,
+                    env=env
                 )
                 
-                print(f"[ani-gui] Process started, PID: {self.current_process.pid}")
+                print(f"[ani-gui] Terminal opened, PID: {self.current_process.pid}")
                 
                 # Wait for process to complete
-                # This will block until user finishes selecting and watching
+                # User will interact with the terminal window that was opened
                 self.current_process.wait()
                 return_code = self.current_process.returncode
                 
