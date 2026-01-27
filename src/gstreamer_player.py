@@ -19,6 +19,7 @@ gi.require_version('Gtk', '4.0')
 from gi.repository import Gtk, Gst, GstVideo, GLib
 from typing import Optional, Callable
 import os
+import subprocess
 
 # Initialize GStreamer
 Gst.init(None)
@@ -110,10 +111,25 @@ class GStreamerPlayer(Gtk.Box):
             print(f"[GStreamerPlayer] Warning: Could not get window ID: {e}")
     
     def play(self, url: str, title: str):
-        """Play video from URL."""
+        """Play video from URL or ani-cli marker."""
         self.title_label.set_text(f"▶️ {title}")
         
         try:
+            # Check if this is an ani-cli fallback
+            if url.startswith("ani-cli|"):
+                parts = url.split("|")
+                anime_name = parts[1] if len(parts) > 1 else "Unknown"
+                ep_no = parts[2] if len(parts) > 2 else "1"
+                self.title_label.set_text(f"⏳ Using ani-cli for playback...")
+                self.play_with_ani_cli(anime_name, ep_no, title)
+                return
+            
+            # Regular URL playback
+            if not url.startswith("http"):
+                self.title_label.set_text(f"❌ Invalid URL")
+                print(f"[GStreamerPlayer] Invalid URL: {url}")
+                return
+            
             # Set video URI
             self.pipeline.set_property("uri", url)
             
@@ -124,10 +140,52 @@ class GStreamerPlayer(Gtk.Box):
             self.pipeline.set_state(Gst.State.PLAYING)
             
             print(f"[GStreamerPlayer] Playing: {title}")
-            print(f"[GStreamerPlayer] URL: {url}")
+            print(f"[GStreamerPlayer] URL: {url[:100]}...")
         except Exception as e:
             print(f"[GStreamerPlayer] Error: {e}")
             self.title_label.set_text(f"❌ Error: {str(e)}")
+    
+    def play_with_ani_cli(self, anime_name: str, ep_no: str, display_title: str):
+        """Play using ani-cli as fallback."""
+        try:
+            # Run ani-cli with the anime and episode
+            import threading
+            
+            def ani_cli_thread():
+                try:
+                    # Use ani-cli to play
+                    cmd = [
+                        "/usr/bin/ani-cli",
+                        "--quality", "best",
+                        "--select-nth", ep_no,
+                        anime_name
+                    ]
+                    
+                    print(f"[GStreamerPlayer] Running: {' '.join(cmd)}")
+                    
+                    result = subprocess.run(
+                        cmd,
+                        timeout=300,  # 5 minute timeout
+                        env={**os.environ, "ROFI_COMMAND": "/usr/bin/fzf"}
+                    )
+                    
+                    if result.returncode == 0:
+                        GLib.idle_add(lambda: self.title_label.set_text(f"✅ Finished playback"))
+                    else:
+                        GLib.idle_add(lambda: self.title_label.set_text(f"⚠️ Playback ended"))
+                except subprocess.TimeoutExpired:
+                    GLib.idle_add(lambda: self.title_label.set_text(f"⏱️ Timeout"))
+                except FileNotFoundError:
+                    GLib.idle_add(lambda: self.title_label.set_text(f"❌ ani-cli not found"))
+                except Exception as e:
+                    GLib.idle_add(lambda: self.title_label.set_text(f"❌ Error: {str(e)[:40]}"))
+                    print(f"[GStreamerPlayer] ani-cli error: {e}")
+            
+            thread = threading.Thread(target=ani_cli_thread, daemon=True)
+            thread.start()
+        except Exception as e:
+            print(f"[GStreamerPlayer] Failed to start ani-cli: {e}")
+            self.title_label.set_text(f"❌ Failed: {str(e)[:40]}")
     
     def set_window_handle(self):
         """Set the window handle for video output."""

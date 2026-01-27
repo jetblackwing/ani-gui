@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Direct anime streamer using AllAnime API.
-No rofi/fzf menus - just search and play automatically.
+Direct anime streamer using multiple sources.
+Falls back to ani-cli for actual streaming.
 """
 
 import subprocess
@@ -10,6 +10,7 @@ import re
 import urllib.parse
 from typing import Optional, Callable, List, Dict
 import threading
+import time
 
 import gi
 gi.require_version('Gtk', '4.0')
@@ -17,65 +18,53 @@ from gi.repository import GLib
 
 
 class DirectStreamer:
-    """Stream anime directly from AllAnime API without interactive menus."""
+    """Stream anime from multiple sources."""
     
     def __init__(self):
-        self.allanime_api = "https://api.allanime.day"
-        self.allanime_refr = "https://allmanga.to"
-        self.agent = "Mozilla/5.0"
         self.current_process = None
+        # Use Jikan API (most reliable) for search
+        self.jikan_api = "https://api.jikan.moe/v4"
+        self.consumet_api = "https://api.consumet.org/anime/gogoanime"
     
     def search_anime(self, query: str) -> List[Dict]:
-        """Search for anime by name using AllAnime API.
+        """Search for anime by name.
         
-        Returns list of dicts with: id, name, episodes
+        Returns list of dicts with: _id, name, episodes
         """
         try:
-            search_gql = 'query( $search: SearchInput $limit: Int $page: Int $translationType: VaildTranslationTypeEnumType $countryOrigin: VaildCountryOriginEnumType ) { shows( search: $search limit: $limit page: $page translationType: $translationType countryOrigin: $countryOrigin ) { edges { _id name availableEpisodes __typename } } }'
+            # Use Jikan API (most reliable)
+            url = f"{self.jikan_api}/anime?query={urllib.parse.quote(query)}&status=complete,ongoing"
             
-            variables = {
-                "search": {
-                    "allowAdult": False,
-                    "allowUnknown": False,
-                    "query": query
-                },
-                "limit": 40,
-                "page": 1,
-                "translationType": "sub",
-                "countryOrigin": "ALL"
-            }
-            
-            cmd = [
-                "curl",
-                "-e", self.allanime_refr,
-                "-s",
-                "-G", f"{self.allanime_api}/api",
-                "--data-urlencode", f"variables={json.dumps(variables)}",
-                "--data-urlencode", f"query={search_gql}",
-                "-A", self.agent
-            ]
-            
+            cmd = ["curl", "-s", "-L", url]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-            if result.returncode != 0:
-                print(f"[DirectStreamer] Search failed: {result.stderr}")
-                return []
             
-            response = result.stdout
+            if result.returncode == 0:
+                try:
+                    data = json.loads(result.stdout)
+                    results = data.get("data", [])
+                    
+                    animes = []
+                    for r in results[:40]:
+                        ep_count = r.get('episodes') or 12
+                        animes.append({
+                            '_id': str(r.get('mal_id', '')),
+                            'name': r.get('title', ''),
+                            'episodes': ep_count
+                        })
+                    
+                    if animes:
+                        print(f"[DirectStreamer] Found {len(animes)} results for '{query}'")
+                        return animes
+                except:
+                    print(f"[DirectStreamer] Jikan API error, trying fallback")
             
-            # Parse results
-            animes = []
-            pattern = r'"_id":"([^"]*)".*?"name":"([^"]*)".*?"sub":([0-9]+)'
-            for match in re.finditer(pattern, response):
-                anime_id, name, episodes = match.groups()
-                name = name.replace('\\"', '"')
-                animes.append({
-                    '_id': anime_id,
-                    'name': name,
-                    'episodes': int(episodes)
-                })
-            
-            print(f"[DirectStreamer] Found {len(animes)} results for '{query}'")
-            return animes
+            # Fallback to placeholder
+            print(f"[DirectStreamer] API unavailable, using placeholder")
+            return [{
+                '_id': f"search_{query.lower().replace(' ', '_')}",
+                'name': query,
+                'episodes': 12
+            }]
         
         except Exception as e:
             print(f"[DirectStreamer] Search error: {e}")
@@ -84,50 +73,31 @@ class DirectStreamer:
     def get_episodes(self, anime_id: str) -> List[str]:
         """Get list of episode numbers for an anime."""
         try:
-            # Query to get episode count
-            episodes_gql = 'query($showId: String!) { show(_id: $showId) { availableEpisodes } }'
+            if anime_id.startswith("search_"):
+                # Placeholder case
+                return [str(i) for i in range(1, 13)]
             
-            variables = {
-                "showId": anime_id
-            }
-            
-            cmd = [
-                "curl",
-                "-e", self.allanime_refr,
-                "-s",
-                "-G", f"{self.allanime_api}/api",
-                "--data-urlencode", f"variables={json.dumps(variables)}",
-                "--data-urlencode", f"query={episodes_gql}",
-                "-A", self.agent
-            ]
-            
+            # Try to get episode count
+            url = f"{self.consumet_api}/info?id={anime_id}"
+            cmd = ["curl", "-s", "-L", url]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-            if result.returncode != 0:
-                print(f"[DirectStreamer] Episode fetch failed")
-                return self._default_episodes()
             
-            response = result.stdout
+            if result.returncode == 0:
+                try:
+                    data = json.loads(result.stdout)
+                    episodes = data.get("episodes", [])
+                    
+                    if episodes:
+                        # Return episode IDs
+                        ep_list = [ep.get('id', str(i+1)) for i, ep in enumerate(episodes)]
+                        print(f"[DirectStreamer] Found {len(ep_list)} episodes")
+                        return ep_list
+                except:
+                    pass
             
-            # Parse episode count
-            pattern = r'"availableEpisodes":([0-9]+)'
-            match = re.search(pattern, response)
-            if match:
-                count = int(match.group(1))
-                episodes = [str(i) for i in range(1, count + 1)]
-                print(f"[DirectStreamer] Found {len(episodes)} episodes")
-                return episodes
-            
-            # Try alternate pattern
-            pattern = r'"sub":([0-9]+)'
-            match = re.search(pattern, response)
-            if match:
-                count = int(match.group(1))
-                episodes = [str(i) for i in range(1, count + 1)]
-                print(f"[DirectStreamer] Found {len(episodes)} episodes (sub)")
-                return episodes
-            
-            print(f"[DirectStreamer] Could not parse, using defaults")
-            return self._default_episodes()
+            # Default fallback
+            print(f"[DirectStreamer] Using default 12 episodes")
+            return [str(i) for i in range(1, 13)]
         
         except Exception as e:
             print(f"[DirectStreamer] Get episodes error: {e}")
@@ -135,43 +105,43 @@ class DirectStreamer:
     
     def _default_episodes(self) -> List[str]:
         """Return default episode list."""
-        return [str(i) for i in range(1, 25)]  # 24 episodes default
+        return [str(i) for i in range(1, 25)]
     
     def get_episode_links(self, anime_id: str, ep_no: str) -> Optional[str]:
-        """Get the playable link for an episode."""
+        """Get the playable link for an episode.
+        
+        Returns either:
+        - A direct HTTP/HTTPS URL for streaming
+        - A marker like "anime_cli://" to use ani-cli for playback
+        """
         try:
-            embed_gql = 'query($showId: String!, $translationType: VaildTranslationTypeEnumType!, $episodeString: String!) { show(_id: $showId) { _id seasonPlacement episodes(translationType: $translationType) { edges { _id epNum sourceUrls(translationType: $translationType) { sourceUrl sourceName } } } } }'
+            if anime_id.startswith("search_"):
+                # For search placeholders, use ani-cli
+                anime_name = anime_id.replace("search_", "").replace("_", " ")
+                return f"ani-cli|{anime_name}|{ep_no}"
             
-            variables = {
-                "showId": anime_id,
-                "translationType": "sub",
-                "episodeString": ep_no
-            }
+            # Try Consumet API to get sources
+            url = f"{self.consumet_api}/watch?id={anime_id}&ep={ep_no}"
+            cmd = ["curl", "-s", "-L", url]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
             
-            cmd = [
-                "curl",
-                "-e", self.allanime_refr,
-                "-s",
-                "-G", f"{self.allanime_api}/api",
-                "--data-urlencode", f"variables={json.dumps(variables)}",
-                "--data-urlencode", f"query={embed_gql}",
-                "-A", self.agent
-            ]
+            if result.returncode == 0:
+                try:
+                    data = json.loads(result.stdout)
+                    sources = data.get("sources", [])
+                    
+                    if sources:
+                        # Use first m3u8 source or first available
+                        for source in sources:
+                            src_url = source.get("url", "")
+                            if "m3u8" in src_url or src_url.startswith("http"):
+                                print(f"[DirectStreamer] Got source: {src_url[:60]}...")
+                                return src_url
+                except:
+                    pass
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-            if result.returncode != 0:
-                return None
-            
-            response = result.stdout
-            
-            # Find first available source URL
-            pattern = r'"sourceUrl":"--([^"]*)"'
-            match = re.search(pattern, response)
-            if match:
-                link = match.group(1)
-                return link
-            
-            return None
+            print(f"[DirectStreamer] Could not get link via API, using ani-cli")
+            return f"ani-cli|Unknown|{ep_no}"
         
         except Exception as e:
             print(f"[DirectStreamer] Get links error: {e}")
@@ -274,3 +244,4 @@ class DirectStreamer:
                 except:
                     pass
             self.current_process = None
+
