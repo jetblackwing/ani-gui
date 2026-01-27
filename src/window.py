@@ -11,7 +11,7 @@
 Main window with navigatable pages.
 """
 
-from gi.repository import Gtk, GLib
+from gi.repository import Gtk, GLib, Gio
 import threading
 from .direct_streamer import DirectStreamer
 from .ani_cli_wrapper import AniCliWrapper
@@ -32,9 +32,18 @@ class AniGuiWindow(Gtk.ApplicationWindow):
         self.wrapper = AniCliWrapper()
         self.history = WatchHistory()
         
+        # Main container
+        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        
+        # Create and add menu bar
+        self.create_menu_bar()
+        main_box.append(self.header_bar)
+        
         # Stack widget for page navigation
         self.stack = Gtk.Stack()
         self.stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
+        self.stack.set_vexpand(True)
+        self.stack.set_hexpand(True)
         
         # Page 1: Selection + Details (side by side)
         selection_page = self.create_selection_page()
@@ -45,7 +54,8 @@ class AniGuiWindow(Gtk.ApplicationWindow):
         self.player.set_on_close_callback(self.on_player_closed)
         self.stack.add_named(self.player, "player")
         
-        self.set_child(self.stack)
+        main_box.append(self.stack)
+        self.set_child(main_box)
         self.stack.set_visible_child_name("selection")
     
     def create_selection_page(self) -> Gtk.Box:
@@ -185,7 +195,7 @@ class AniGuiWindow(Gtk.ApplicationWindow):
         
         # Show results
         for anime in results:
-            btn = Gtk.Button(label=f"{anime['name']}\n{anime['episodes']} eps")
+            btn = Gtk.Button(label=f"{anime['name']}\n{anime.get('episodes', '?')} eps")
             btn.set_hexpand(True)
             btn.connect("clicked", lambda b, a=anime: self.on_anime_selected(a))
             self.results_box.append(btn)
@@ -273,6 +283,68 @@ class AniGuiWindow(Gtk.ApplicationWindow):
     def on_player_closed(self):
         """Return to selection when player closes."""
         self.stack.set_visible_child_name("selection")
+    
+    def create_menu_bar(self):
+        """Create application menu bar with Help and About."""
+        # Create menu model
+        menu = Gio.Menu()
+        
+        # Help action
+        help_action = Gio.SimpleAction.new("help", None)
+        help_action.connect("activate", self.on_help_activated)
+        self.add_action(help_action)
+        menu.append("Help", "win.help")
+        
+        # About action
+        about_action = Gio.SimpleAction.new("about", None)
+        about_action.connect("activate", self.on_about_activated)
+        self.add_action(about_action)
+        menu.append("About", "win.about")
+        
+        # Create popover menu
+        menu_button = Gtk.MenuButton()
+        menu_button.set_menu_model(menu)
+        menu_button.set_label("☰")
+        
+        # Create header bar with menu button
+        header_bar = Gtk.HeaderBar()
+        header_bar.pack_end(menu_button)
+        header_bar.set_title_widget(Gtk.Label(label="Ani-GUI"))
+        
+        # This will be set to the main box later via CSS or different approach
+        self.header_bar = header_bar
+    
+    def on_help_activated(self, action, param):
+        """Show help dialog."""
+        dialog = Gtk.MessageDialog(
+            transient_for=self,
+            modal=True,
+            message_type=Gtk.MessageType.INFO,
+            buttons=Gtk.ButtonsType.OK,
+            text="Help"
+        )
+        dialog.format_secondary_text(
+            "1. Search for an anime using the search box\n"
+            "2. Click on an anime to view episodes\n"
+            "3. Click an episode to play it\n"
+            "4. Use fullscreen button for better viewing\n"
+            "5. Click Close to return to search"
+        )
+        dialog.run()
+        dialog.destroy()
+    
+    def on_about_activated(self, action, param):
+        """Show about dialog."""
+        dialog = Gtk.AboutDialog(transient_for=self)
+        dialog.set_program_name("Ani-GUI")
+        dialog.set_version("1.0")
+        dialog.set_copyright("Copyright 2024 Amal")
+        dialog.set_comments("Anime streaming GUI using AllAnime API")
+        dialog.set_website("https://github.com")
+        dialog.set_authors(["Amal"])
+        dialog.set_license_type(Gtk.License.GPL_3_0)
+        dialog.run()
+        dialog.destroy()
     
     def load_recommendations(self):
         """Load anime recommendations."""

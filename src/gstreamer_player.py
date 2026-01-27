@@ -102,9 +102,12 @@ class GStreamerPlayer(Gtk.Box):
     
     def on_realize(self, widget):
         """Get drawing area window ID for video output."""
-        surface = widget.get_native().get_surface()
-        if surface:
-            self.xid = int(surface.__gpointer__())
+        try:
+            surface = widget.get_native().get_surface()
+            if surface and hasattr(surface, '__gpointer__'):
+                self.xid = hash(surface) & 0x7fffffff
+        except Exception as e:
+            print(f"[GStreamerPlayer] Warning: Could not get window ID: {e}")
     
     def play(self, url: str, title: str):
         """Play video from URL."""

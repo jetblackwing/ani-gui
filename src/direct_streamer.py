@@ -69,7 +69,7 @@ class DirectStreamer:
                 anime_id, name, episodes = match.groups()
                 name = name.replace('\\"', '"')
                 animes.append({
-                    'id': anime_id,
+                    '_id': anime_id,
                     'name': name,
                     'episodes': int(episodes)
                 })
@@ -140,7 +140,7 @@ class DirectStreamer:
     def get_episode_links(self, anime_id: str, ep_no: str) -> Optional[str]:
         """Get the playable link for an episode."""
         try:
-            embed_gql = 'query($showId: String!, $translationType: VaildTranslationTypeEnumType!, $episodeString: String!) { show(id: $showId) { _id seasonPlacement episodes(translationType: $translationType) { edges { _id epNum sourceUrls(translationType: $translationType) { sourceUrl sourceName } } } } }'
+            embed_gql = 'query($showId: String!, $translationType: VaildTranslationTypeEnumType!, $episodeString: String!) { show(_id: $showId) { _id seasonPlacement episodes(translationType: $translationType) { edges { _id epNum sourceUrls(translationType: $translationType) { sourceUrl sourceName } } } } }'
             
             variables = {
                 "showId": anime_id,
@@ -203,7 +203,7 @@ class DirectStreamer:
                 
                 # Auto-select first result
                 anime = results[0]
-                anime_id = anime['id']
+                anime_id = anime['_id']
                 title = anime['name']
                 
                 if callback:
