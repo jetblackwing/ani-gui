@@ -11,10 +11,9 @@
 Main window with navigatable pages.
 """
 
-from gi.repository import Gtk, GLib, Gio
+from gi.repository import Gtk, GLib
 import threading
-from .direct_streamer import DirectStreamer
-from .ani_cli_wrapper import AniCliWrapper
+from .ani_cli_direct import AniCliDirect
 from .gstreamer_player import GStreamerPlayer
 from .watch_history import WatchHistory
 
@@ -28,16 +27,11 @@ class AniGuiWindow(Gtk.ApplicationWindow):
         self.set_default_size(1600, 900)
         self.set_title("Ani-GUI - Anime Streaming")
         
-        self.streamer = DirectStreamer()
-        self.wrapper = AniCliWrapper()
+        self.streamer = AniCliDirect()
         self.history = WatchHistory()
         
         # Main container
         main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        
-        # Create and add menu bar
-        self.create_menu_bar()
-        main_box.append(self.header_bar)
         
         # Stack widget for page navigation
         self.stack = Gtk.Stack()
@@ -254,7 +248,8 @@ class AniGuiWindow(Gtk.ApplicationWindow):
         
         def play_thread():
             try:
-                link = self.streamer.get_episode_links(anime['_id'], episode)
+                # Get the best link for the episode
+                link = self.streamer.get_best_link(anime['_id'], episode)
                 if not link:
                     GLib.idle_add(lambda: self.player.title_label.set_text(
                         f"❌ Episode {episode} unavailable"
@@ -284,71 +279,20 @@ class AniGuiWindow(Gtk.ApplicationWindow):
         """Return to selection when player closes."""
         self.stack.set_visible_child_name("selection")
     
-    def create_menu_bar(self):
-        """Create application menu bar with Help and About."""
-        # Create menu model
-        menu = Gio.Menu()
-        
-        # Help action
-        help_action = Gio.SimpleAction.new("help", None)
-        help_action.connect("activate", self.on_help_activated)
-        self.add_action(help_action)
-        menu.append("Help", "win.help")
-        
-        # About action
-        about_action = Gio.SimpleAction.new("about", None)
-        about_action.connect("activate", self.on_about_activated)
-        self.add_action(about_action)
-        menu.append("About", "win.about")
-        
-        # Create popover menu
-        menu_button = Gtk.MenuButton()
-        menu_button.set_menu_model(menu)
-        menu_button.set_label("☰")
-        
-        # Create header bar with menu button
-        header_bar = Gtk.HeaderBar()
-        header_bar.pack_end(menu_button)
-        header_bar.set_title_widget(Gtk.Label(label="Ani-GUI"))
-        
-        # This will be set to the main box later via CSS or different approach
-        self.header_bar = header_bar
-    
-    def on_help_activated(self, action, param):
-        """Show help dialog."""
-        dialog = Gtk.MessageDialog(
-            transient_for=self,
-            modal=True,
-            message_type=Gtk.MessageType.INFO,
-            buttons=Gtk.ButtonsType.OK,
-            text="Help"
-        )
-        dialog.format_secondary_text(
-            "1. Search for an anime using the search box\n"
-            "2. Click on an anime to view episodes\n"
-            "3. Click an episode to play it\n"
-            "4. Use fullscreen button for better viewing\n"
-            "5. Click Close to return to search"
-        )
-        dialog.run()
-        dialog.destroy()
-    
-    def on_about_activated(self, action, param):
-        """Show about dialog."""
-        dialog = Gtk.AboutDialog(transient_for=self)
-        dialog.set_program_name("Ani-GUI")
-        dialog.set_version("1.0")
-        dialog.set_copyright("Copyright 2024 Amal")
-        dialog.set_comments("Anime streaming GUI using AllAnime API")
-        dialog.set_website("https://github.com")
-        dialog.set_authors(["Amal"])
-        dialog.set_license_type(Gtk.License.GPL_3_0)
-        dialog.run()
-        dialog.destroy()
-    
     def load_recommendations(self):
         """Load anime recommendations."""
-        recs = self.wrapper.get_recommendations()
+        # Popular anime list for recommendations
+        popular_anime = [
+            {"_id": "4lyLixe2P8Izt", "name": "Death Note", "episodes": 37},
+            {"_id": "PvFYjvuet", "name": "Attack on Titan", "episodes": 139},
+            {"_id": "dR8uAXW6p", "name": "Demon Slayer", "episodes": 55},
+            {"_id": "rJ8jvl0Xl", "name": "My Hero Academia", "episodes": 188},
+            {"_id": "XuYhavYftLYbaqizA", "name": "Steins;Gate", "episodes": 24},
+            {"_id": "zDnnhLEu1", "name": "Jujutsu Kaisen", "episodes": 64},
+        ]
+        
+        import random
+        recs = random.sample(popular_anime, min(6, len(popular_anime)))
         
         # Clear
         while (child := self.recs_box.get_first_child()):
