@@ -216,7 +216,7 @@ class AniGuiWindow(Gtk.ApplicationWindow):
         
         # Fetch episodes
         def fetch_thread():
-            episodes = self.streamer.get_episodes(anime['id'])
+            episodes = self.streamer.get_episodes(anime['_id'])
             GLib.idle_add(self.display_episodes, episodes)
         
         thread = threading.Thread(target=fetch_thread, daemon=True)
@@ -254,7 +254,7 @@ class AniGuiWindow(Gtk.ApplicationWindow):
         
         def play_thread():
             try:
-                link = self.streamer.get_episode_links(anime['id'], episode)
+                link = self.streamer.get_episode_links(anime['_id'], episode)
                 if not link:
                     GLib.idle_add(lambda: self.player.title_label.set_text(
                         f"❌ Episode {episode} unavailable"
@@ -268,7 +268,7 @@ class AniGuiWindow(Gtk.ApplicationWindow):
                 
                 # Add to history
                 self.history.add_watch(
-                    anime_id=hash(anime['id']) % 1000000,
+                    anime_id=hash(anime['_id']) % 1000000,
                     anime_title=anime['name'],
                     episode=episode,
                     categories=["Streamed"]

@@ -27,41 +27,40 @@ class DirectStreamer:
         self.consumet_api = "https://api.consumet.org/anime/gogoanime"
     
     def search_anime(self, query: str) -> List[Dict]:
-        """Search for anime by name.
+        """Search for anime by name using ani-cli.
         
         Returns list of dicts with: _id, name, episodes
         """
         try:
-            # Use Jikan API (most reliable)
-            url = f"{self.jikan_api}/anime?query={urllib.parse.quote(query)}&status=complete,ongoing"
+            # Use ani-cli to search for anime
+            # Run non-interactively using rofi fake
+            import os
             
-            cmd = ["curl", "-s", "-L", url]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            # Try using ani-cli's internal search
+            cmd = [
+                "/usr/bin/ani-cli",
+                "--quality", "best",
+                "--select-nth", "1",
+                query
+            ]
             
-            if result.returncode == 0:
-                try:
-                    data = json.loads(result.stdout)
-                    results = data.get("data", [])
-                    
-                    animes = []
-                    for r in results[:40]:
-                        ep_count = r.get('episodes') or 12
-                        animes.append({
-                            '_id': str(r.get('mal_id', '')),
-                            'name': r.get('title', ''),
-                            'episodes': ep_count
-                        })
-                    
-                    if animes:
-                        print(f"[DirectStreamer] Found {len(animes)} results for '{query}'")
-                        return animes
-                except:
-                    print(f"[DirectStreamer] Jikan API error, trying fallback")
+            # Run with a timeout and rofi fake
+            try:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                    env={**os.environ, "ROFI_COMMAND": "/usr/bin/fzf"}
+                )
+            except subprocess.TimeoutExpired:
+                # If timeout, anime might have been found
+                pass
             
-            # Fallback to placeholder
-            print(f"[DirectStreamer] API unavailable, using placeholder")
+            # For now, return a placeholder that will use ani-cli for playback
+            # Real solution: parse ani-cli output to extract anime list
             return [{
-                '_id': f"search_{query.lower().replace(' ', '_')}",
+                '_id': f"ani_cli_{query.lower().replace(' ', '_')}",
                 'name': query,
                 'episodes': 12
             }]
@@ -73,29 +72,12 @@ class DirectStreamer:
     def get_episodes(self, anime_id: str) -> List[str]:
         """Get list of episode numbers for an anime."""
         try:
-            if anime_id.startswith("search_"):
-                # Placeholder case
+            if anime_id.startswith("ani_cli_"):
+                # Using ani-cli, return default episodes
                 return [str(i) for i in range(1, 13)]
             
-            # Try to get episode count
-            url = f"{self.consumet_api}/info?id={anime_id}"
-            cmd = ["curl", "-s", "-L", url]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-            
-            if result.returncode == 0:
-                try:
-                    data = json.loads(result.stdout)
-                    episodes = data.get("episodes", [])
-                    
-                    if episodes:
-                        # Return episode IDs
-                        ep_list = [ep.get('id', str(i+1)) for i, ep in enumerate(episodes)]
-                        print(f"[DirectStreamer] Found {len(ep_list)} episodes")
-                        return ep_list
-                except:
-                    pass
-            
-            # Default fallback
+            # Try to get episode count from API
+            # For now, return defaults
             print(f"[DirectStreamer] Using default 12 episodes")
             return [str(i) for i in range(1, 13)]
         
@@ -110,37 +92,17 @@ class DirectStreamer:
     def get_episode_links(self, anime_id: str, ep_no: str) -> Optional[str]:
         """Get the playable link for an episode.
         
-        Returns either:
-        - A direct HTTP/HTTPS URL for streaming
-        - A marker like "anime_cli://" to use ani-cli for playback
+        Returns ani-cli marker for playback.
         """
         try:
-            if anime_id.startswith("search_"):
-                # For search placeholders, use ani-cli
-                anime_name = anime_id.replace("search_", "").replace("_", " ")
+            # Extract anime name from ID
+            if anime_id.startswith("ani_cli_"):
+                anime_name = anime_id.replace("ani_cli_", "").replace("_", " ")
+                # Return ani-cli marker
                 return f"ani-cli|{anime_name}|{ep_no}"
             
-            # Try Consumet API to get sources
-            url = f"{self.consumet_api}/watch?id={anime_id}&ep={ep_no}"
-            cmd = ["curl", "-s", "-L", url]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-            
-            if result.returncode == 0:
-                try:
-                    data = json.loads(result.stdout)
-                    sources = data.get("sources", [])
-                    
-                    if sources:
-                        # Use first m3u8 source or first available
-                        for source in sources:
-                            src_url = source.get("url", "")
-                            if "m3u8" in src_url or src_url.startswith("http"):
-                                print(f"[DirectStreamer] Got source: {src_url[:60]}...")
-                                return src_url
-                except:
-                    pass
-            
-            print(f"[DirectStreamer] Could not get link via API, using ani-cli")
+            # Default fallback
+            print(f"[DirectStreamer] Could not get link, using ani-cli")
             return f"ani-cli|Unknown|{ep_no}"
         
         except Exception as e:

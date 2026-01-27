@@ -35,7 +35,7 @@ class AniCliWrapper:
                 return None
             
             anime = results[0]
-            anime_id = anime['id']
+            anime_id = anime['_id']
             
             print(f"[AniCliWrapper] Found: {anime['name']} (ID: {anime_id})")
             
