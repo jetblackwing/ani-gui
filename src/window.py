@@ -281,14 +281,14 @@ class AniGuiWindow(Gtk.ApplicationWindow):
     
     def load_recommendations(self):
         """Load anime recommendations."""
-        # Popular anime list for recommendations
+        # Popular anime with working IDs from AllAnime API
         popular_anime = [
-            {"_id": "4lyLixe2P8Izt", "name": "Death Note", "episodes": 37},
-            {"_id": "PvFYjvuet", "name": "Attack on Titan", "episodes": 139},
-            {"_id": "dR8uAXW6p", "name": "Demon Slayer", "episodes": 55},
-            {"_id": "rJ8jvl0Xl", "name": "My Hero Academia", "episodes": 188},
-            {"_id": "XuYhavYftLYbaqizA", "name": "Steins;Gate", "episodes": 24},
-            {"_id": "zDnnhLEu1", "name": "Jujutsu Kaisen", "episodes": 64},
+            {"_id": "RezHft5pjutwWcE3B", "name": "Death Note", "episodes": 37},
+            {"_id": "GDBxqQvB9MpNqn2ct", "name": "Steins;Gate", "episodes": 24},
+            {"_id": "2oXgpDPd3xKWdgnoz", "name": "Naruto", "episodes": 220},
+            {"_id": "ReooPAxPMsHM4KPMY", "name": "One Piece", "episodes": 1156},
+            {"_id": "GoDoALiHc82Jrmcmh", "name": "Bleach", "episodes": 366},
+            {"_id": "auvmLg2sG4tcmkkuK", "name": "Monster", "episodes": 74},
         ]
         
         import random

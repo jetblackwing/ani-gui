@@ -129,7 +129,7 @@ class GStreamerPlayer(Gtk.Box):
                 try:
                     cmd = [
                         "mpv",
-                        "--http-referrer=https://allmanga.to",
+                        "--referrer=https://allmanga.to",
                         f"--title={title}",
                         url
                     ]
