@@ -14,6 +14,7 @@ Main window with navigatable pages.
 from gi.repository import Gtk, GLib
 import threading
 from .direct_streamer import DirectStreamer
+from .ani_cli_wrapper import AniCliWrapper
 from .gstreamer_player import GStreamerPlayer
 from .watch_history import WatchHistory
 
@@ -28,6 +29,7 @@ class AniGuiWindow(Gtk.ApplicationWindow):
         self.set_title("Ani-GUI - Anime Streaming")
         
         self.streamer = DirectStreamer()
+        self.wrapper = AniCliWrapper()
         self.history = WatchHistory()
         
         # Stack widget for page navigation
@@ -76,7 +78,7 @@ class AniGuiWindow(Gtk.ApplicationWindow):
         left_panel.append(search_box)
         
         # Status
-        self.search_status = Gtk.Label(label="Enter anime name", css_classes=["dim-label"])
+        self.search_status = Gtk.Label(label="Enter anime name or click recommendations", css_classes=["dim-label"])
         left_panel.append(self.search_status)
         
         # Results
@@ -84,6 +86,18 @@ class AniGuiWindow(Gtk.ApplicationWindow):
         self.results_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
         results_scroll.set_child(self.results_box)
         left_panel.append(results_scroll)
+        
+        # Recommendations section
+        self.recs_label = Gtk.Label(label="📺 Recommended", css_classes=["heading"])
+        left_panel.append(self.recs_label)
+        
+        recs_scroll = Gtk.ScrolledWindow(hexpand=True, vexpand=True)
+        self.recs_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        recs_scroll.set_child(self.recs_box)
+        left_panel.append(recs_scroll)
+        
+        # Load recommendations on init
+        self.load_recommendations()
         
         # Right panel: Anime details
         right_panel = Gtk.Box(
@@ -259,3 +273,18 @@ class AniGuiWindow(Gtk.ApplicationWindow):
     def on_player_closed(self):
         """Return to selection when player closes."""
         self.stack.set_visible_child_name("selection")
+    
+    def load_recommendations(self):
+        """Load anime recommendations."""
+        recs = self.wrapper.get_recommendations()
+        
+        # Clear
+        while (child := self.recs_box.get_first_child()):
+            self.recs_box.remove(child)
+        
+        # Show recommendations
+        for anime in recs:
+            btn = Gtk.Button(label=f"🎬 {anime['name']}\n{anime['episodes']} eps")
+            btn.set_hexpand(True)
+            btn.connect("clicked", lambda b, a=anime: self.on_anime_selected(a))
+            self.recs_box.append(btn)

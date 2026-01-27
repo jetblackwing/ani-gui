@@ -49,6 +49,10 @@ class GStreamerPlayer(Gtk.Box):
         self.title_label.set_hexpand(True)
         title_box.append(self.title_label)
         
+        fullscreen_button = Gtk.Button(label="⛶ Fullscreen")
+        fullscreen_button.connect("clicked", self.on_fullscreen_clicked)
+        title_box.append(fullscreen_button)
+        
         close_button = Gtk.Button(label="✕ Close")
         close_button.connect("clicked", self.on_close_clicked)
         title_box.append(close_button)
@@ -143,6 +147,15 @@ class GStreamerPlayer(Gtk.Box):
         self.pipeline.set_state(Gst.State.PLAYING)
         self.play_button.set_sensitive(False)
         self.pause_button.set_sensitive(True)
+    
+    def on_fullscreen_clicked(self, button):
+        """Toggle fullscreen."""
+        root = self.get_root()
+        if isinstance(root, Gtk.Window):
+            if root.is_fullscreen():
+                root.unfullscreen()
+            else:
+                root.fullscreen()
     
     def on_pause_clicked(self, button):
         """Pause."""

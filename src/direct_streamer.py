@@ -84,8 +84,8 @@ class DirectStreamer:
     def get_episodes(self, anime_id: str) -> List[str]:
         """Get list of episode numbers for an anime."""
         try:
-            # First try to get episodes from API
-            episodes_gql = 'query($showId: String!) { show(id: $showId) { _id availableEpisodes } }'
+            # Query to get episode count
+            episodes_gql = 'query($showId: String!) { show(_id: $showId) { availableEpisodes } }'
             
             variables = {
                 "showId": anime_id
@@ -103,14 +103,13 @@ class DirectStreamer:
             
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             if result.returncode != 0:
-                print(f"[DirectStreamer] Episode fetch failed, returning defaults")
-                return [str(i) for i in range(1, 13)]  # Default 12 episodes
+                print(f"[DirectStreamer] Episode fetch failed")
+                return self._default_episodes()
             
             response = result.stdout
-            print(f"[DirectStreamer] Episode response: {response[:200]}")
             
             # Parse episode count
-            pattern = r'"sub":([0-9]+)'
+            pattern = r'"availableEpisodes":([0-9]+)'
             match = re.search(pattern, response)
             if match:
                 count = int(match.group(1))
@@ -118,14 +117,25 @@ class DirectStreamer:
                 print(f"[DirectStreamer] Found {len(episodes)} episodes")
                 return episodes
             
-            # Fallback
-            print(f"[DirectStreamer] Could not parse episodes, returning defaults")
-            return [str(i) for i in range(1, 13)]
+            # Try alternate pattern
+            pattern = r'"sub":([0-9]+)'
+            match = re.search(pattern, response)
+            if match:
+                count = int(match.group(1))
+                episodes = [str(i) for i in range(1, count + 1)]
+                print(f"[DirectStreamer] Found {len(episodes)} episodes (sub)")
+                return episodes
+            
+            print(f"[DirectStreamer] Could not parse, using defaults")
+            return self._default_episodes()
         
         except Exception as e:
             print(f"[DirectStreamer] Get episodes error: {e}")
-            # Return default episode list on error
-            return [str(i) for i in range(1, 13)]
+            return self._default_episodes()
+    
+    def _default_episodes(self) -> List[str]:
+        """Return default episode list."""
+        return [str(i) for i in range(1, 25)]  # 24 episodes default
     
     def get_episode_links(self, anime_id: str, ep_no: str) -> Optional[str]:
         """Get the playable link for an episode."""
