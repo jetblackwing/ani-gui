@@ -225,14 +225,19 @@ class AniCliDirect:
         if not links:
             return None
         
-        # Prefer wixmp (m3u8), then youtube, then sharepoint
+        # Prefer direct HTTPS links first
         for link_data in links:
-            provider = link_data.get('provider', '').lower()
-            if 'wixmp' in provider or 'default' in provider:
-                print(f"[AniCliDirect] Using {provider}: {link_data['url'][:60]}...")
-                return link_data['url']
+            url = link_data.get('url', '')
+            if url.startswith('https://'):
+                # Clean up double slashes in path only (not in https://)
+                # Replace https:// with placeholder, fix double slashes, restore
+                url = url.replace('https://', 'HTTPS_MARKER')
+                url = url.replace('//', '/')
+                url = url.replace('HTTPS_MARKER', 'https://')
+                provider = link_data.get('provider', 'Unknown')
+                print(f"[AniCliDirect] Using {provider}: {url[:60]}...")
+                return url
         
-        # Fallback to first link
-        url = links[0]['url']
-        print(f"[AniCliDirect] Using first link: {url[:60]}...")
-        return url
+        # If no HTTPS links, return None (relative paths like /apivtwo need processing)
+        print(f"[AniCliDirect] No playable HTTPS links found")
+        return None

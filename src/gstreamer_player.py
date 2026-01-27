@@ -111,8 +111,8 @@ class GStreamerPlayer(Gtk.Box):
             print(f"[GStreamerPlayer] Warning: Could not get window ID: {e}")
     
     def play(self, url: str, title: str):
-        """Play video from URL."""
-        self.title_label.set_text(f"▶️ {title}")
+        """Play video from URL using mpv (which handles referrers better)."""
+        self.title_label.set_text(f"⏳ Starting playback...")
         
         try:
             # Validate URL
@@ -121,17 +121,39 @@ class GStreamerPlayer(Gtk.Box):
                 print(f"[GStreamerPlayer] Invalid URL: {url}")
                 return
             
-            # Set video URI
-            self.pipeline.set_property("uri", url)
+            # Use mpv for playback (handles referrers and various stream types better)
+            import subprocess
+            import threading
             
-            # Set video output to drawing area
-            self.set_window_handle()
+            def play_thread():
+                try:
+                    cmd = [
+                        "mpv",
+                        "--http-referrer=https://allmanga.to",
+                        f"--title={title}",
+                        url
+                    ]
+                    
+                    print(f"[GStreamerPlayer] Playing with mpv: {url[:80]}...")
+                    
+                    result = subprocess.run(cmd, timeout=3600)  # 1 hour timeout
+                    
+                    GLib.idle_add(lambda: self.title_label.set_text(f"✅ Playback finished"))
+                    
+                except FileNotFoundError:
+                    print(f"[GStreamerPlayer] mpv not found")
+                    GLib.idle_add(lambda: self.title_label.set_text(f"❌ mpv not installed"))
+                except subprocess.TimeoutExpired:
+                    print(f"[GStreamerPlayer] Playback timeout")
+                except Exception as e:
+                    print(f"[GStreamerPlayer] Playback error: {e}")
+                    GLib.idle_add(lambda: self.title_label.set_text(f"❌ Error: {str(e)[:40]}"))
             
-            # Start playback
-            self.pipeline.set_state(Gst.State.PLAYING)
+            thread = threading.Thread(target=play_thread, daemon=True)
+            thread.start()
             
-            print(f"[GStreamerPlayer] Playing: {title}")
-            print(f"[GStreamerPlayer] URL: {url[:100]}...")
+            GLib.idle_add(lambda: self.title_label.set_text(f"▶️ {title}"))
+            
         except Exception as e:
             print(f"[GStreamerPlayer] Error: {e}")
             self.title_label.set_text(f"❌ Error: {str(e)[:50]}")
