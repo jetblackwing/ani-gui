@@ -235,18 +235,21 @@ class WatchInterfaceWidget(Gtk.Box):
             self.current_anime = anime_name
             button.set_sensitive(False)
             
-            # Show video player
-            self.video_player.set_visible(True)
-            
-            # Show clear status
-            self.status_label.set_text(f"🎬 Streaming {anime_name}...")
+            # Show clear status (player will show when ready)
+            self.status_label.set_text(f"🎬 Searching: {anime_name}...")
             
             # Play using direct API with embedded video player
             def play_callback(success, message):
-                # Re-enable button when done
-                GLib.idle_add(lambda: button.set_sensitive(True))
                 # Update status with result
                 GLib.idle_add(lambda: self.status_label.set_text(message))
+                
+                # Show video player only when successfully loaded
+                if success and "Playing" in message:
+                    GLib.idle_add(lambda: self.video_player.set_visible(True))
+                
+                # Re-enable button when done or failed
+                if not success or "Finished" in message or "Error" in message or "not found" in message:
+                    GLib.idle_add(lambda: button.set_sensitive(True))
                 
                 # Add to history only on successful completion
                 if success and "Finished" in message:
@@ -400,21 +403,6 @@ class WatchInterfaceWidget(Gtk.Box):
                 row_box.append(separator)
             
             self.history_box.append(row_box)
-                xalign=0,
-                css_classes=["heading"]
-            )
-            row.append(title)
-            
-            # Info
-            categories = ', '.join(item.get('categories', []))
-            info = Gtk.Label(
-                label=f"Categories: {categories} | Last: {item.get('last_watched', 'Unknown')[:10]}",
-                xalign=0,
-                css_classes=["caption"]
-            )
-            row.append(info)
-            
-            self.history_box.append(row)
     
     def update_categories(self):
         """Update category filter options."""
@@ -431,3 +419,4 @@ class WatchInterfaceWidget(Gtk.Box):
             self.category_combo.append(cat, cat)
         
         self.category_combo.set_active_id("all")
+

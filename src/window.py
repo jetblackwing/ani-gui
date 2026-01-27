@@ -6,21 +6,16 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-# SPDX-License-Identifier: GPL-3.0-or-later
+
+"""
+Main window with navigatable pages.
+"""
 
 from gi.repository import Gtk, GLib
-from .search_handler import SearchHandler, AnimeSearchRow
-from .video_player import VideoPlayerWidget
-from .watch_interface import WatchInterfaceWidget
+import threading
+from .direct_streamer import DirectStreamer
+from .gstreamer_player import GStreamerPlayer
+from .watch_history import WatchHistory
 
 
 class AniGuiWindow(Gtk.ApplicationWindow):
@@ -29,189 +24,238 @@ class AniGuiWindow(Gtk.ApplicationWindow):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
-        self.set_default_size(1400, 800)
-        self.set_title("Ani-GUI - Anime Streaming Player")
+        self.set_default_size(1600, 900)
+        self.set_title("Ani-GUI - Anime Streaming")
         
-        self.search_handler = SearchHandler()
-        self.current_page = 1
-        self.has_next_page = False
+        self.streamer = DirectStreamer()
+        self.history = WatchHistory()
         
-        # Main container with tabs
-        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        # Stack widget for page navigation
+        self.stack = Gtk.Stack()
+        self.stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
         
-        # Create notebook (tabbed interface)
-        self.notebook = Gtk.Notebook()
+        # Page 1: Selection + Details (side by side)
+        selection_page = self.create_selection_page()
+        self.stack.add_named(selection_page, "selection")
         
-        # Tab 1: Search and Browse
-        search_tab = self._create_search_tab()
-        self.notebook.append_page(search_tab, Gtk.Label(label="🔍 Search & Browse"))
+        # Page 2: Video Player
+        self.player = GStreamerPlayer()
+        self.player.set_on_close_callback(self.on_player_closed)
+        self.stack.add_named(self.player, "player")
         
-        # Tab 2: Watch Interface (ani-cli with search results)
-        watch_tab = WatchInterfaceWidget()
-        self.notebook.append_page(watch_tab, Gtk.Label(label="▶ Watch & History"))
-        
-        main_box.append(self.notebook)
-        
-        self.set_child(main_box)
-        
-        # Search on initial load (in first tab)
-        self._trigger_search("Jujutsu Kaisen")
+        self.set_child(self.stack)
+        self.stack.set_visible_child_name("selection")
     
-    def _create_search_tab(self) -> Gtk.Box:
-        """Create the search and browse tab."""
-        tab_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+    def create_selection_page(self) -> Gtk.Box:
+        """Create selection page with left and right panels."""
+        page = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         
-        # Header with search
-        header_box = Gtk.Box(
+        # Left panel: Anime selector
+        left_panel = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
             spacing=10,
-            margin_top=10,
-            margin_bottom=10,
-            margin_start=10,
-            margin_end=10
+            margin_top=15,
+            margin_bottom=15,
+            margin_start=15,
+            margin_end=15
         )
+        left_panel.set_size_request(450, -1)
         
-        # Search bar
+        # Search
+        left_title = Gtk.Label(label="Search Anime", css_classes=["title-1"])
+        left_panel.append(left_title)
+        
         search_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        
-        self.search_entry = Gtk.SearchEntry(
-            hexpand=True,
-            placeholder_text="Search anime by title...",
-            css_classes=["search"]
-        )
-        self.search_entry.connect("search-changed", self.on_search_changed)
+        self.search_entry = Gtk.SearchEntry(placeholder_text="Search anime...")
+        self.search_entry.connect("activate", self.on_search_activated)
         search_box.append(self.search_entry)
         
-        header_box.append(search_box)
-        tab_box.append(header_box)
+        search_button = Gtk.Button(label="🔍 Search")
+        search_button.connect("clicked", self.on_search_clicked)
+        search_box.append(search_button)
+        left_panel.append(search_box)
         
-        # Content area with paned layout
-        paned = Gtk.Paned(
-            orientation=Gtk.Orientation.HORIZONTAL,
-            hexpand=True,
-            vexpand=True,
-            wide_handle=True
+        # Status
+        self.search_status = Gtk.Label(label="Enter anime name", css_classes=["dim-label"])
+        left_panel.append(self.search_status)
+        
+        # Results
+        results_scroll = Gtk.ScrolledWindow(hexpand=True, vexpand=True)
+        self.results_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        results_scroll.set_child(self.results_box)
+        left_panel.append(results_scroll)
+        
+        # Right panel: Anime details
+        right_panel = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=10,
+            margin_top=15,
+            margin_bottom=15,
+            margin_start=15,
+            margin_end=15
         )
+        right_panel.set_size_request(450, -1)
         
-        # Left side: Search results
-        left_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        # Anime info
+        self.anime_title = Gtk.Label(label="Select anime", css_classes=["title-1"])
+        right_panel.append(self.anime_title)
         
-        # Results scrolled window
-        scrolled = Gtk.ScrolledWindow(
-            hexpand=True,
-            vexpand=True
-        )
+        # Episodes heading
+        self.episodes_heading = Gtk.Label(label="Episodes", css_classes=["heading"])
+        right_panel.append(self.episodes_heading)
         
-        self.results_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        scrolled.set_child(self.results_box)
-        left_box.append(scrolled)
+        # Episodes list
+        episodes_scroll = Gtk.ScrolledWindow(hexpand=True, vexpand=True)
+        self.episodes_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        episodes_scroll.set_child(self.episodes_box)
+        right_panel.append(episodes_scroll)
         
-        # Pagination buttons
-        pagination_box = Gtk.Box(
-            orientation=Gtk.Orientation.HORIZONTAL,
-            spacing=5,
-            margin_top=10,
-            margin_bottom=10,
-            margin_start=10,
-            margin_end=10
-        )
-        pagination_box.set_homogeneous(True)
+        # Quality selector
+        quality_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        quality_label = Gtk.Label(label="Quality:")
+        quality_box.append(quality_label)
         
-        self.prev_button = Gtk.Button(label="← Previous")
-        self.prev_button.connect("clicked", self.on_prev_page)
-        self.prev_button.set_sensitive(False)
-        pagination_box.append(self.prev_button)
+        self.quality_combo = Gtk.ComboBoxText()
+        self.quality_combo.append("best", "🎯 Best")
+        self.quality_combo.append("1080", "1080p")
+        self.quality_combo.append("720", "720p")
+        self.quality_combo.set_active_id("best")
+        quality_box.append(self.quality_combo)
+        right_panel.append(quality_box)
         
-        self.next_button = Gtk.Button(label="Next →")
-        self.next_button.connect("clicked", self.on_next_page)
-        self.next_button.set_sensitive(False)
-        pagination_box.append(self.next_button)
+        # Separator
+        separator = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
         
-        left_box.append(pagination_box)
+        # Combine panels
+        page.append(left_panel)
+        page.append(separator)
+        page.append(right_panel)
         
-        paned.set_start_child(left_box)
-        paned.set_resize_start_child(True)
+        # Store for later
+        self.right_panel = right_panel
+        self.current_anime = None
         
-        # Right side: Video player and details
-        self.video_player = VideoPlayerWidget()
-        paned.set_end_child(self.video_player)
-        paned.set_resize_end_child(True)
-        paned.set_position(700)
-        
-        tab_box.append(paned)
-        return tab_box
+        return page
     
-    def on_search_changed(self, entry):
-        """Handle search entry changes."""
-        query = entry.get_text()
-        if query:
-            self.current_page = 1
-            self._trigger_search(query)
+    def on_search_activated(self, entry):
+        """Search when Enter is pressed."""
+        self.on_search_clicked(None)
     
-    def _trigger_search(self, query: str):
-        """Trigger anime search."""
-        # Clear previous results
-        while True:
-            child = self.results_box.get_first_child()
-            if not child:
-                break
-            self.results_box.remove(child)
+    def on_search_clicked(self, button):
+        """Handle search."""
+        query = self.search_entry.get_text().strip()
+        if not query:
+            self.search_status.set_text("❌ Enter anime name")
+            return
         
-        # Show loading indicator
-        loading_label = Gtk.Label(label="Searching...")
-        loading_label.add_css_class("dim-label")
-        self.results_box.append(loading_label)
+        self.search_status.set_text("🔍 Searching...")
         
-        self.search_handler.search_anime(
-            query,
-            self.on_search_results,
-            page=self.current_page
-        )
+        def search_thread():
+            results = self.streamer.search_anime(query)
+            GLib.idle_add(self.display_results, results)
+        
+        thread = threading.Thread(target=search_thread, daemon=True)
+        thread.start()
     
-    def on_search_results(self, results: list, has_next_page: bool):
-        """Handle search results."""
-        self.has_next_page = has_next_page
-        
-        # Clear loading indicator
-        while True:
-            child = self.results_box.get_first_child()
-            if not child:
-                break
+    def display_results(self, results):
+        """Display search results."""
+        # Clear
+        while (child := self.results_box.get_first_child()):
             self.results_box.remove(child)
         
         if not results:
-            empty_label = Gtk.Label(label="No results found")
-            empty_label.add_css_class("dim-label")
-            self.results_box.append(empty_label)
-        else:
-            for anime in results:
-                row = AnimeSearchRow(
-                    anime,
-                    self.search_handler,
-                    self.on_anime_selected
-                )
-                self.results_box.append(row)
+            self.search_status.set_text("❌ No results")
+            return
         
-        # Update pagination buttons
-        self.prev_button.set_sensitive(self.current_page > 1)
-        self.next_button.set_sensitive(has_next_page)
+        self.search_status.set_text(f"✅ Found {len(results)}")
+        
+        # Show results
+        for anime in results:
+            btn = Gtk.Button(label=f"{anime['name']}\n{anime['episodes']} eps")
+            btn.set_hexpand(True)
+            btn.connect("clicked", lambda b, a=anime: self.on_anime_selected(a))
+            self.results_box.append(btn)
     
     def on_anime_selected(self, anime: dict):
-        """Handle anime selection from search results."""
-        self.video_player.set_anime(anime)
+        """Selected an anime - show details and episodes."""
+        self.current_anime = anime
+        self.anime_title.set_text(f"▶️ {anime['name']}")
+        
+        # Clear episodes
+        while (child := self.episodes_box.get_first_child()):
+            self.episodes_box.remove(child)
+        
+        # Show loading
+        loading = Gtk.Label(label="Loading episodes...")
+        loading.add_css_class("dim-label")
+        self.episodes_box.append(loading)
+        
+        # Fetch episodes
+        def fetch_thread():
+            episodes = self.streamer.get_episodes(anime['id'])
+            GLib.idle_add(self.display_episodes, episodes)
+        
+        thread = threading.Thread(target=fetch_thread, daemon=True)
+        thread.start()
     
-    def on_prev_page(self, button):
-        """Handle previous page button."""
-        if self.current_page > 1:
-            self.current_page -= 1
-            query = self.search_entry.get_text()
-            if query:
-                self._trigger_search(query)
+    def display_episodes(self, episodes):
+        """Display available episodes."""
+        # Clear
+        while (child := self.episodes_box.get_first_child()):
+            self.episodes_box.remove(child)
+        
+        if not episodes:
+            error = Gtk.Label(label="❌ No episodes found")
+            error.add_css_class("dim-label")
+            self.episodes_box.append(error)
+            return
+        
+        # Show episodes
+        for ep in episodes[:30]:  # Show first 30
+            btn = Gtk.Button(label=f"Episode {ep}")
+            btn.set_hexpand(True)
+            btn.connect("clicked", lambda b, e=ep: self.on_episode_selected(e))
+            self.episodes_box.append(btn)
     
-    def on_next_page(self, button):
-        """Handle next page button."""
-        if self.has_next_page:
-            self.current_page += 1
-            query = self.search_entry.get_text()
-            if query:
-                self._trigger_search(query)
+    def on_episode_selected(self, episode: str):
+        """Play selected episode."""
+        if not self.current_anime:
+            return
+        
+        # Go to player page
+        self.stack.set_visible_child_name("player")
+        
+        # Fetch and play
+        anime = self.current_anime
+        
+        def play_thread():
+            try:
+                link = self.streamer.get_episode_links(anime['id'], episode)
+                if not link:
+                    GLib.idle_add(lambda: self.player.title_label.set_text(
+                        f"❌ Episode {episode} unavailable"
+                    ))
+                    return
+                
+                # Play video
+                GLib.idle_add(
+                    lambda: self.player.play(link, f"{anime['name']} - EP {episode}")
+                )
+                
+                # Add to history
+                self.history.add_watch(
+                    anime_id=hash(anime['id']) % 1000000,
+                    anime_title=anime['name'],
+                    episode=episode,
+                    categories=["Streamed"]
+                )
+            except Exception as e:
+                GLib.idle_add(lambda: self.player.title_label.set_text(f"❌ Error: {str(e)}"))
+                print(f"[Window] Play error: {e}")
+        
+        thread = threading.Thread(target=play_thread, daemon=True)
+        thread.start()
+    
+    def on_player_closed(self):
+        """Return to selection when player closes."""
+        self.stack.set_visible_child_name("selection")

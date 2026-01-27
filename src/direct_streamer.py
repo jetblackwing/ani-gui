@@ -84,7 +84,8 @@ class DirectStreamer:
     def get_episodes(self, anime_id: str) -> List[str]:
         """Get list of episode numbers for an anime."""
         try:
-            episodes_gql = 'query($showId: String!) { show(id: $showId) { _id availableEpisodesDetail } }'
+            # First try to get episodes from API
+            episodes_gql = 'query($showId: String!) { show(id: $showId) { _id availableEpisodes } }'
             
             variables = {
                 "showId": anime_id
@@ -102,23 +103,29 @@ class DirectStreamer:
             
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             if result.returncode != 0:
-                return []
+                print(f"[DirectStreamer] Episode fetch failed, returning defaults")
+                return [str(i) for i in range(1, 13)]  # Default 12 episodes
             
             response = result.stdout
+            print(f"[DirectStreamer] Episode response: {response[:200]}")
             
-            # Parse episode list
-            pattern = r'"sub":\[([0-9.,]*)\]'
+            # Parse episode count
+            pattern = r'"sub":([0-9]+)'
             match = re.search(pattern, response)
             if match:
-                episodes_str = match.group(1)
-                episodes = [ep.strip() for ep in episodes_str.split(',') if ep.strip()]
+                count = int(match.group(1))
+                episodes = [str(i) for i in range(1, count + 1)]
+                print(f"[DirectStreamer] Found {len(episodes)} episodes")
                 return episodes
             
-            return []
+            # Fallback
+            print(f"[DirectStreamer] Could not parse episodes, returning defaults")
+            return [str(i) for i in range(1, 13)]
         
         except Exception as e:
             print(f"[DirectStreamer] Get episodes error: {e}")
-            return []
+            # Return default episode list on error
+            return [str(i) for i in range(1, 13)]
     
     def get_episode_links(self, anime_id: str, ep_no: str) -> Optional[str]:
         """Get the playable link for an episode."""
@@ -203,14 +210,20 @@ class DirectStreamer:
                     return
                 
                 if callback:
-                    GLib.idle_add(callback, None, f"▶️  Starting playback...")
+                    GLib.idle_add(callback, None, f"▶️ Loading video...")
                 
                 # Play with embedded player or mpv
                 if video_player:
-                    # Use embedded video player
-                    GLib.idle_add(video_player.play, link, f"{title} - Episode {episode}")
-                    if callback:
-                        GLib.idle_add(callback, True, f"✅ Finished: {title} Episode {episode}")
+                    # Use embedded video player - load and show
+                    def load_video():
+                        try:
+                            video_player.play(link, f"{title} - Episode {episode}")
+                            if callback:
+                                callback(True, f"▶️ Playing: {title} Episode {episode}")
+                        except Exception as e:
+                            if callback:
+                                callback(False, f"❌ Playback error: {str(e)}")
+                    GLib.idle_add(load_video)
                 else:
                     # Fallback to mpv
                     self.current_process = subprocess.Popen(
