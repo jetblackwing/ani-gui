@@ -1,5 +1,6 @@
 #!/bin/bash
 # setup-venv.sh - Create and configure virtual environment for ani-gui
+# Copyright 2024 Amal J Krishnan <amaljk80@gmail.com> (@jetblackwing)
 
 set -e
 

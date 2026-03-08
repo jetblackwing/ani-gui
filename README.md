@@ -144,6 +144,8 @@ Pull requests welcome! Areas for improvement:
 
 ## License
 
+Copyright 2024 Amal J Krishnan <amaljk80@gmail.com> (@jetblackwing)
+
 [GPL-3.0](https://choosealicense.com/licenses/gpl-3.0/)
 
 ## Disclaimer

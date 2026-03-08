@@ -1,5 +1,6 @@
 #!/bin/bash
 # run.sh - Simple launcher script for ani-gui
+# Copyright 2024 Amal J Krishnan <amaljk80@gmail.com> (@jetblackwing)
 # This script automatically sets up and runs ani-gui
 
 set -e

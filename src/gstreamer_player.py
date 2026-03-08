@@ -1,6 +1,6 @@
 # gstreamer_player.py
 #
-# Copyright 2024 Amal
+# Copyright 2024 Amal J Krishnan <amaljk80@gmail.com> (@jetblackwing)
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by

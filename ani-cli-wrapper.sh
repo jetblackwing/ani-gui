@@ -1,6 +1,7 @@
 #!/bin/bash
 #
 # ani-cli wrapper - ensures fzf usage with fallback
+# Copyright 2024 Amal J Krishnan <amaljk80@gmail.com> (@jetblackwing)
 # This wrapper forces ani-cli to use fzf and handles rofi failures
 #
 

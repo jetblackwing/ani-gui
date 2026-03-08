@@ -1,6 +1,6 @@
 # main.py
 #
-# Copyright 2024 Amal
+# Copyright 2024 Amal J Krishnan <amaljk80@gmail.com> (@jetblackwing)
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -54,8 +54,8 @@ class AniGuiApplication(Gtk.Application):
                                 program_name='ani-gui',
                                 logo_icon_name='com.ajk.anigui',
                                 version='1.0',
-                                authors=['Amal JK'],
-                                copyright='© 2024 github.com/jetblackwing')
+                                authors=['Amal J Krishnan <amaljk80@gmail.com>'],
+                                copyright='© 2024 Amal J Krishnan (github.com/jetblackwing)')
         about.present()
 
     def on_preferences_action(self, widget, _):
