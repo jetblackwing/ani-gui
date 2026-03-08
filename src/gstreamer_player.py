@@ -127,8 +127,14 @@ class GStreamerPlayer(Gtk.Box):
         try:
             if source.find_property("user-agent"):
                 source.set_property("user-agent", "Mozilla/5.0")
-            if source.find_property("referer"):
-                source.set_property("referer", "https://allmanga.to")
+            if source.find_property("extra-headers"):
+                headers = Gst.Structure.new_empty("headers")
+                headers.set_value("Referer", "https://allmanga.to")
+                headers.set_value("Origin", "https://allmanga.to")
+                headers.set_value("Connection", "keep-alive")
+                source.set_property("extra-headers", headers)
+            if source.find_property("timeout"):
+                source.set_property("timeout", 30)
         except Exception as e:
             print(f"[GStreamerPlayer] source setup warning: {e}")
     
@@ -200,7 +206,10 @@ class GStreamerPlayer(Gtk.Box):
         if msg_type == Gst.MessageType.ERROR:
             err, debug = message.parse_error()
             print(f"[GStreamerPlayer] Error: {err}")
-            self.title_label.set_text(f"❌ Playback error: {err.message}")
+            if debug:
+                print(f"[GStreamerPlayer] Debug: {debug}")
+            reason = err.message if err and err.message else "unknown error"
+            self.title_label.set_text(f"❌ Playback error: {reason}")
             self.play_button.set_sensitive(True)
             self.pause_button.set_sensitive(False)
         elif msg_type == Gst.MessageType.EOS:
