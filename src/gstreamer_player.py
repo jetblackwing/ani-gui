@@ -18,8 +18,6 @@ gi.require_version('Gtk', '4.0')
 
 from gi.repository import Gtk, Gst, GstVideo, GLib
 from typing import Optional, Callable
-import os
-import subprocess
 
 # Initialize GStreamer
 Gst.init(None)
@@ -60,11 +58,16 @@ class GStreamerPlayer(Gtk.Box):
         
         self.append(title_box)
         
-        # Video drawing area
-        self.drawing_area = Gtk.DrawingArea()
-        self.drawing_area.set_hexpand(True)
-        self.drawing_area.set_vexpand(True)
-        self.append(self.drawing_area)
+        # Video area (embedded in app)
+        self.video_frame = Gtk.Frame(
+            hexpand=True,
+            vexpand=True,
+            margin_start=10,
+            margin_end=10
+        )
+        self.picture = Gtk.Picture(hexpand=True, vexpand=True)
+        self.video_frame.set_child(self.picture)
+        self.append(self.video_frame)
         
         # Controls
         controls = Gtk.Box(
@@ -91,28 +94,47 @@ class GStreamerPlayer(Gtk.Box):
         
         # GStreamer pipeline
         self.pipeline = Gst.ElementFactory.make("playbin", "player")
+        self.pipeline.connect("source-setup", self.on_source_setup)
+        self.using_embedded_sink = self._setup_video_sink()
+
         self.bus = self.pipeline.get_bus()
         self.bus.add_signal_watch()
         self.bus.connect("message", self.on_message)
         
         self.on_close_callback = None
         self.xid = None
-        
-        # Get window ID when drawing area is realized
-        self.drawing_area.connect("realize", self.on_realize)
-    
-    def on_realize(self, widget):
-        """Get drawing area window ID for video output."""
+        self.play_button.set_sensitive(False)
+        self.pause_button.set_sensitive(False)
+
+        if not self.using_embedded_sink:
+            self.title_label.set_text("Video Player (install gtk4paintablesink for embedded playback)")
+
+    def _setup_video_sink(self) -> bool:
+        """Configure an embedded GTK4 sink if available."""
+        sink = Gst.ElementFactory.make("gtk4paintablesink", "gtk4sink")
+        if not sink:
+            print("[GStreamerPlayer] gtk4paintablesink not available")
+            return False
+
+        self.pipeline.set_property("video-sink", sink)
+        paintable = sink.get_property("paintable")
+        if paintable:
+            self.picture.set_paintable(paintable)
+        return True
+
+    def on_source_setup(self, playbin, source):
+        """Set source headers so streams that require referer keep working."""
         try:
-            surface = widget.get_native().get_surface()
-            if surface and hasattr(surface, '__gpointer__'):
-                self.xid = hash(surface) & 0x7fffffff
+            if source.find_property("user-agent"):
+                source.set_property("user-agent", "Mozilla/5.0")
+            if source.find_property("referer"):
+                source.set_property("referer", "https://allmanga.to")
         except Exception as e:
-            print(f"[GStreamerPlayer] Warning: Could not get window ID: {e}")
+            print(f"[GStreamerPlayer] source setup warning: {e}")
     
     def play(self, url: str, title: str):
-        """Play video from URL using mpv (which handles referrers better)."""
-        self.title_label.set_text(f"⏳ Starting playback...")
+        """Play video from URL inside the application."""
+        self.title_label.set_text("⏳ Starting playback...")
         
         try:
             # Validate URL
@@ -120,59 +142,19 @@ class GStreamerPlayer(Gtk.Box):
                 self.title_label.set_text(f"❌ Invalid stream URL")
                 print(f"[GStreamerPlayer] Invalid URL: {url}")
                 return
-            
-            # Use mpv for playback (handles referrers and various stream types better)
-            import subprocess
-            import threading
-            
-            def play_thread():
-                try:
-                    cmd = [
-                        "mpv",
-                        "--referrer=https://allmanga.to",
-                        f"--title={title}",
-                        url
-                    ]
-                    
-                    print(f"[GStreamerPlayer] Playing with mpv: {url[:80]}...")
-                    
-                    result = subprocess.run(cmd, timeout=3600)  # 1 hour timeout
-                    
-                    GLib.idle_add(lambda: self.title_label.set_text(f"✅ Playback finished"))
-                    
-                except FileNotFoundError:
-                    print(f"[GStreamerPlayer] mpv not found")
-                    GLib.idle_add(lambda: self.title_label.set_text(f"❌ mpv not installed"))
-                except subprocess.TimeoutExpired:
-                    print(f"[GStreamerPlayer] Playback timeout")
-                except Exception as e:
-                    print(f"[GStreamerPlayer] Playback error: {e}")
-                    GLib.idle_add(lambda: self.title_label.set_text(f"❌ Error: {str(e)[:40]}"))
-            
-            thread = threading.Thread(target=play_thread, daemon=True)
-            thread.start()
-            
-            GLib.idle_add(lambda: self.title_label.set_text(f"▶️ {title}"))
-            
+
+            print(f"[GStreamerPlayer] Starting embedded playback: {url[:80]}...")
+            self.pipeline.set_state(Gst.State.NULL)
+            self.pipeline.set_property("uri", url)
+            self.pipeline.set_state(Gst.State.PLAYING)
+
+            self.title_label.set_text(f"▶️ {title}")
+            self.play_button.set_sensitive(False)
+            self.pause_button.set_sensitive(True)
+
         except Exception as e:
             print(f"[GStreamerPlayer] Error: {e}")
             self.title_label.set_text(f"❌ Error: {str(e)[:50]}")
-    
-    def set_window_handle(self):
-        """Set the window handle for video output."""
-        try:
-            # Get the X11 window ID
-            surface = self.drawing_area.get_native().get_surface()
-            if surface:
-                # Set the window handle on the video sink
-                bus = self.pipeline.get_bus()
-                if bus:
-                    msg = Gst.Message.new_application(
-                        self.pipeline,
-                        Gst.Structure.new_empty("gst-window-handle")
-                    )
-        except:
-            pass
     
     def on_play_clicked(self, button):
         """Play."""
@@ -219,9 +201,14 @@ class GStreamerPlayer(Gtk.Box):
             err, debug = message.parse_error()
             print(f"[GStreamerPlayer] Error: {err}")
             self.title_label.set_text(f"❌ Playback error: {err.message}")
+            self.play_button.set_sensitive(True)
+            self.pause_button.set_sensitive(False)
         elif msg_type == Gst.MessageType.EOS:
             # End of stream
             self.pipeline.set_state(Gst.State.NULL)
+            self.title_label.set_text("✅ Playback finished")
+            self.play_button.set_sensitive(True)
+            self.pause_button.set_sensitive(False)
             if self.on_close_callback:
                 self.on_close_callback()
     
