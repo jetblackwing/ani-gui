@@ -17,8 +17,27 @@
             </child>
             <child>
               <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes" context="shortcut window">Help</property>
+                <property name="action-name">win.show-help</property>
+                <property name="accelerator">F1</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
                 <property name="title" translatable="yes" context="shortcut window">Quit</property>
                 <property name="action-name">app.quit</property>
+                <property name="accelerator">&lt;Primary&gt;q</property>
+              </object>
+            </child>
+          </object>
+        </child>
+        <child>
+          <object class="GtkShortcutsGroup">
+            <property name="title" translatable="yes" context="shortcut window">Navigation</property>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes" context="shortcut window">Search</property>
+                <property name="accelerator">&lt;Primary&gt;f</property>
               </object>
             </child>
           </object>

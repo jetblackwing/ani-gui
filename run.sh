@@ -24,3 +24,4 @@ source venv/bin/activate
 
 echo "✓ Starting Ani-GUI..."
 python3 run-app.py
+

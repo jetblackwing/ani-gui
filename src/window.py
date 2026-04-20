@@ -11,7 +11,7 @@
 Main window with navigatable pages.
 """
 
-from gi.repository import Gtk, GLib
+from gi.repository import Gtk, GLib, Gio
 import threading
 from .ani_cli_direct import AniCliDirect
 from .gstreamer_player import GStreamerPlayer
@@ -28,6 +28,19 @@ class AniGuiWindow(Gtk.ApplicationWindow):
         self.set_title("Ani-GUI - Anime Streaming")
         self.add_css_class("ani-window")
         self._load_css()
+
+        # Create header bar
+        self._create_header_bar()
+
+        # Add window actions
+        self.create_action('show-help', self.on_help_clicked, ['F1'])
+        self.create_action('focus-search', self.on_focus_search, ['<Primary>f'])
+
+        # Set up help overlay
+        builder = Gtk.Builder()
+        builder.add_from_file("/home/user/ani-gui/src/gtk/help-overlay.ui")
+        help_overlay = builder.get_object("help_overlay")
+        self.set_help_overlay(help_overlay)
 
         self.streamer = AniCliDirect()
         self.history = WatchHistory()
@@ -58,86 +71,170 @@ class AniGuiWindow(Gtk.ApplicationWindow):
         """Load app-level CSS styling."""
         css = """
         window.ani-window {
-            background: linear-gradient(165deg, #f4f6f9 0%, #ecf2f8 100%);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        headerbar.header-bar {
+            background: rgba(255, 255, 255, 0.95);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            padding: 8px 16px;
+        }
+
+        headerbar.header-bar .title {
+            color: #2d3748;
+            font-weight: bold;
+            font-size: 1.2em;
         }
 
         .page-shell {
-            padding: 18px;
-            border-spacing: 14px;
+            padding: 24px;
+            border-spacing: 20px;
+            background: rgba(255, 255, 255, 0.05);
         }
 
         .pane-card {
-            background: rgba(255, 255, 255, 0.9);
-            border-radius: 14px;
-            border: 1px solid rgba(27, 51, 76, 0.08);
-            padding: 16px;
-            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 16px;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+            backdrop-filter: blur(10px);
         }
 
         .app-title {
-            font-size: 1.35rem;
+            font-size: 1.5rem;
             font-weight: 700;
-            color: #12263a;
-            margin-bottom: 4px;
+            color: #1a202c;
+            margin-bottom: 8px;
+        }
+
+        .search-header {
+            margin-bottom: 16px;
+        }
+
+        .search-icon {
+            color: #667eea;
+            opacity: 0.8;
+        }
+
+        .star-icon {
+            color: #fbbf24;
         }
 
         .title-1 {
-            font-size: 1.35rem;
+            font-size: 1.4rem;
             font-weight: 700;
-            color: #12263a;
+            color: #2d3748;
         }
 
         .section-title {
-            font-size: 1rem;
-            font-weight: 700;
-            color: #28435c;
-            margin-top: 6px;
-            margin-bottom: 2px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #4a5568;
+            margin-top: 8px;
+            margin-bottom: 4px;
         }
 
         .muted {
-            color: rgba(43, 63, 86, 0.78);
-            font-size: 0.92rem;
+            color: rgba(74, 85, 104, 0.8);
+            font-size: 0.95rem;
         }
 
         .dim-label {
-            color: rgba(43, 63, 86, 0.78);
-            font-size: 0.92rem;
+            color: rgba(74, 85, 104, 0.7);
+            font-size: 0.9rem;
         }
 
         .heading {
-            font-size: 1rem;
-            font-weight: 700;
-            color: #28435c;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #4a5568;
         }
 
         entry {
-            border-radius: 10px;
-            padding: 8px 10px;
+            border-radius: 12px;
+            padding: 10px 12px;
+            border: 2px solid rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.9);
+            transition: all 0.2s ease;
+        }
+
+        entry:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
         button.search-button {
-            background: #0b5cab;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: #ffffff;
-            border-radius: 10px;
+            border-radius: 12px;
             font-weight: 600;
+            padding: 10px 20px;
+            border: none;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
         }
 
         button.search-button:hover {
-            background: #0d66bc;
+            background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
         }
 
         button.list-item {
-            border-radius: 10px;
-            border: 1px solid rgba(28, 55, 80, 0.15);
-            background: #f8fbff;
-            padding-top: 8px;
-            padding-bottom: 8px;
+            border-radius: 12px;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            background: rgba(255, 255, 255, 0.8);
+            padding: 12px 16px;
+            margin: 2px 0;
+            transition: all 0.2s ease;
+            text-align: left;
         }
 
         button.list-item:hover {
-            background: #edf5ff;
-            border-color: rgba(11, 92, 171, 0.38);
+            background: rgba(102, 126, 234, 0.1);
+            border-color: rgba(102, 126, 234, 0.3);
+            transform: translateX(2px);
+        }
+
+        /* Scrollbar styling */
+        scrollbar {
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+        }
+
+        scrollbar slider {
+            background: rgba(102, 126, 234, 0.6);
+            border-radius: 8px;
+        }
+
+        scrollbar slider:hover {
+            background: rgba(102, 126, 234, 0.8);
+        }
+
+        .player-title-bar {
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 8px;
+            padding: 8px 12px;
+            margin: 8px;
+        }
+
+        .player-title-bar .heading {
+            color: #ffffff;
+            font-weight: bold;
+        }
+
+        .player-controls {
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 8px;
+            padding: 8px 12px;
+            margin: 8px;
+            justify-content: center;
+        }
+
+        .player-controls button {
+            margin: 0 4px;
         }
         """
 
@@ -148,6 +245,79 @@ class AniGuiWindow(Gtk.ApplicationWindow):
             provider,
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
         )
+
+    def _create_header_bar(self):
+        """Create and set up the header bar with menus."""
+        header_bar = Gtk.HeaderBar()
+        header_bar.add_css_class("header-bar")
+
+        # Application menu button
+        menu_button = Gtk.MenuButton()
+        menu_button.set_icon_name("open-menu-symbolic")
+        menu_button.add_css_class("flat")
+
+        # Create menu model
+        menu = Gio.Menu()
+        menu.append("About", "app.about")
+        menu.append("Help", "win.show-help")
+        menu.append("Quit", "app.quit")
+
+        menu_button.set_menu_model(menu)
+        header_bar.pack_end(menu_button)
+
+        # Help button
+        help_button = Gtk.Button()
+        help_button.set_icon_name("help-browser-symbolic")
+        help_button.set_tooltip_text("Help")
+        help_button.add_css_class("flat")
+        help_button.connect("clicked", self.on_help_clicked)
+        header_bar.pack_end(help_button)
+
+        # Title
+        title_label = Gtk.Label()
+        title_label.set_markup("<span font-weight='bold' font-size='large'>Ani-GUI</span>")
+        title_label.add_css_class("title")
+        header_bar.set_title_widget(title_label)
+
+        self.set_titlebar(header_bar)
+
+    def on_help_clicked(self, button):
+        """Show help dialog."""
+        help_dialog = Gtk.MessageDialog(
+            transient_for=self,
+            modal=True,
+            message_type=Gtk.MessageType.INFO,
+            buttons=Gtk.ButtonsType.OK,
+            text="Ani-GUI Help",
+            secondary_text="Ani-GUI is a graphical interface for streaming anime using ani-cli.\n\n"
+                          "• Search for anime by title in the search box\n"
+                          "• Browse recommendations on the left\n"
+                          "• Select an anime to view episodes\n"
+                          "• Choose your preferred quality\n"
+                          "• Click an episode to start streaming\n\n"
+                          "Use Ctrl+Q to quit the application."
+        )
+        help_dialog.connect("response", lambda d, r: d.destroy())
+        help_dialog.present()
+
+    def on_focus_search(self, action, param):
+        """Focus the search entry."""
+        if hasattr(self, 'search_entry'):
+            self.search_entry.grab_focus()
+
+    def create_action(self, name, callback, shortcuts=None):
+        """Add a window action.
+
+        Args:
+            name: the name of the action
+            callback: the function to be called when the action is activated
+            shortcuts: an optional list of accelerators
+        """
+        action = Gio.SimpleAction.new(name, None)
+        action.connect("activate", callback)
+        self.add_action(action)
+        if shortcuts:
+            self.get_application().set_accels_for_action(f"win.{name}", shortcuts)
 
     def create_selection_page(self) -> Gtk.Box:
         """Create selection page with left and right panels."""
@@ -164,19 +334,37 @@ class AniGuiWindow(Gtk.ApplicationWindow):
         left_panel.set_size_request(450, -1)
 
         # Search
+        search_header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        search_header.add_css_class("search-header")
+
+        search_icon = Gtk.Image()
+        search_icon.set_from_icon_name("system-search-symbolic")
+        search_icon.add_css_class("search-icon")
+        search_header.append(search_icon)
+
         left_title = Gtk.Label(label="Discover Anime")
         left_title.set_halign(Gtk.Align.START)
         left_title.add_css_class("app-title")
-        left_panel.append(left_title)
+        search_header.append(left_title)
 
-        search_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        left_panel.append(search_header)
+
+        search_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         self.search_entry = Gtk.SearchEntry(placeholder_text="Search by title...")
         self.search_entry.set_hexpand(True)
         self.search_entry.connect("activate", self.on_search_activated)
         search_box.append(self.search_entry)
 
-        search_button = Gtk.Button(label="Search")
+        search_button = Gtk.Button()
         search_button.add_css_class("search-button")
+
+        search_btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        search_icon = Gtk.Image()
+        search_icon.set_from_icon_name("system-search-symbolic")
+        search_btn_box.append(search_icon)
+        search_btn_box.append(Gtk.Label(label="Search"))
+
+        search_button.set_child(search_btn_box)
         search_button.connect("clicked", self.on_search_clicked)
         search_box.append(search_button)
         left_panel.append(search_box)
@@ -298,7 +486,24 @@ class AniGuiWindow(Gtk.ApplicationWindow):
         
         # Show results
         for anime in results:
-            btn = Gtk.Button(label=f"{anime['name']}\n{anime.get('episodes', '?')} episodes")
+            result_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            
+            anime_icon = Gtk.Image()
+            anime_icon.set_from_icon_name("video-display-symbolic")
+            anime_icon.set_pixel_size(16)
+            result_box.append(anime_icon)
+            
+            title_label = Gtk.Label(label=anime['name'])
+            title_label.set_halign(Gtk.Align.START)
+            title_label.set_hexpand(True)
+            result_box.append(title_label)
+            
+            episodes_label = Gtk.Label(label=f"{anime.get('episodes', '?')} eps")
+            episodes_label.add_css_class("dim-label")
+            result_box.append(episodes_label)
+            
+            btn = Gtk.Button()
+            btn.set_child(result_box)
             btn.add_css_class("list-item")
             btn.set_hexpand(True)
             btn.connect("clicked", lambda b, a=anime: self.on_anime_selected(a))
@@ -340,7 +545,20 @@ class AniGuiWindow(Gtk.ApplicationWindow):
         
         # Show episodes
         for ep in episodes[:30]:  # Show first 30
-            btn = Gtk.Button(label=f"Episode {ep}")
+            ep_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            
+            play_icon = Gtk.Image()
+            play_icon.set_from_icon_name("media-playback-start-symbolic")
+            play_icon.set_pixel_size(16)
+            ep_box.append(play_icon)
+            
+            ep_label = Gtk.Label(label=f"Episode {ep}")
+            ep_label.set_halign(Gtk.Align.START)
+            ep_label.set_hexpand(True)
+            ep_box.append(ep_label)
+            
+            btn = Gtk.Button()
+            btn.set_child(ep_box)
             btn.add_css_class("list-item")
             btn.set_hexpand(True)
             btn.connect("clicked", lambda b, e=ep: self.on_episode_selected(e))
@@ -411,7 +629,25 @@ class AniGuiWindow(Gtk.ApplicationWindow):
         
         # Show recommendations
         for anime in recs:
-            btn = Gtk.Button(label=f"{anime['name']}\n{anime['episodes']} episodes")
+            rec_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            
+            star_icon = Gtk.Image()
+            star_icon.set_from_icon_name("starred-symbolic")
+            star_icon.set_pixel_size(16)
+            star_icon.add_css_class("star-icon")
+            rec_box.append(star_icon)
+            
+            title_label = Gtk.Label(label=anime['name'])
+            title_label.set_halign(Gtk.Align.START)
+            title_label.set_hexpand(True)
+            rec_box.append(title_label)
+            
+            episodes_label = Gtk.Label(label=f"{anime['episodes']} eps")
+            episodes_label.add_css_class("dim-label")
+            rec_box.append(episodes_label)
+            
+            btn = Gtk.Button()
+            btn.set_child(rec_box)
             btn.add_css_class("list-item")
             btn.set_hexpand(True)
             btn.connect("clicked", lambda b, a=anime: self.on_anime_selected(a))

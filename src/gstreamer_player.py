@@ -40,6 +40,7 @@ class GStreamerPlayer(Gtk.Box):
             margin_end=10,
             margin_top=10
         )
+        title_box.add_css_class("player-title-bar")
         
         self.title_label = Gtk.Label(
             label="Video Player",
@@ -48,11 +49,17 @@ class GStreamerPlayer(Gtk.Box):
         self.title_label.set_hexpand(True)
         title_box.append(self.title_label)
         
-        fullscreen_button = Gtk.Button(label="⛶ Fullscreen")
+        fullscreen_button = Gtk.Button()
+        fullscreen_button.set_icon_name("view-fullscreen-symbolic")
+        fullscreen_button.set_tooltip_text("Fullscreen")
+        fullscreen_button.add_css_class("flat")
         fullscreen_button.connect("clicked", self.on_fullscreen_clicked)
         title_box.append(fullscreen_button)
         
-        close_button = Gtk.Button(label="✕ Close")
+        close_button = Gtk.Button()
+        close_button.set_icon_name("window-close-symbolic")
+        close_button.set_tooltip_text("Close Player")
+        close_button.add_css_class("flat")
         close_button.connect("clicked", self.on_close_clicked)
         title_box.append(close_button)
         
@@ -77,16 +84,26 @@ class GStreamerPlayer(Gtk.Box):
             margin_end=10,
             margin_bottom=10
         )
+        controls.add_css_class("player-controls")
         
-        self.play_button = Gtk.Button(label="▶ Play")
+        self.play_button = Gtk.Button()
+        self.play_button.set_icon_name("media-playback-start-symbolic")
+        self.play_button.set_tooltip_text("Play")
+        self.play_button.add_css_class("flat")
         self.play_button.connect("clicked", self.on_play_clicked)
         controls.append(self.play_button)
         
-        self.pause_button = Gtk.Button(label="⏸ Pause")
+        self.pause_button = Gtk.Button()
+        self.pause_button.set_icon_name("media-playback-pause-symbolic")
+        self.pause_button.set_tooltip_text("Pause")
+        self.pause_button.add_css_class("flat")
         self.pause_button.connect("clicked", self.on_pause_clicked)
         controls.append(self.pause_button)
         
-        self.stop_button = Gtk.Button(label="⏹ Stop")
+        self.stop_button = Gtk.Button()
+        self.stop_button.set_icon_name("media-playback-stop-symbolic")
+        self.stop_button.set_tooltip_text("Stop")
+        self.stop_button.add_css_class("flat")
         self.stop_button.connect("clicked", self.on_stop_clicked)
         controls.append(self.stop_button)
         
