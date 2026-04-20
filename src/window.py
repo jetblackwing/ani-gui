@@ -16,6 +16,8 @@ import threading
 from .ani_cli_direct import AniCliDirect
 from .gstreamer_player import GStreamerPlayer
 from .watch_history import WatchHistory
+from .anilist_api import AniListAPI
+from .thumbnail_cache import ThumbnailCache
 
 
 class AniGuiWindow(Gtk.ApplicationWindow):
@@ -44,6 +46,8 @@ class AniGuiWindow(Gtk.ApplicationWindow):
 
         self.streamer = AniCliDirect()
         self.history = WatchHistory()
+        self.anilist_api = AniListAPI()
+        self.thumbnail_cache = ThumbnailCache()
 
         # Main container
         main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
@@ -70,6 +74,11 @@ class AniGuiWindow(Gtk.ApplicationWindow):
     def _load_css(self):
         """Load app-level CSS styling."""
         css = """
+        /* Base styles */
+        * {
+            transition: all 0.2s ease;
+        }
+
         window.ani-window {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
@@ -120,6 +129,16 @@ class AniGuiWindow(Gtk.ApplicationWindow):
 
         .star-icon {
             color: #fbbf24;
+        }
+
+        .anime-thumbnail {
+            border-radius: 8px;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .anime-title {
+            font-weight: 600;
+            color: #2d3748;
         }
 
         .title-1 {
@@ -466,6 +485,13 @@ class AniGuiWindow(Gtk.ApplicationWindow):
         self.search_status.set_text("Searching...")
         
         def search_thread():
+            # First try AniList API for rich results
+            anilist_results = self.anilist_api.search_anime(query)
+            if anilist_results:
+                GLib.idle_add(self.display_anilist_results, anilist_results)
+                return
+            
+            # Fallback to ani-cli search
             results = self.streamer.search_anime(query)
             GLib.idle_add(self.display_results, results)
         
@@ -509,6 +535,100 @@ class AniGuiWindow(Gtk.ApplicationWindow):
             btn.connect("clicked", lambda b, a=anime: self.on_anime_selected(a))
             self.results_box.append(btn)
     
+    def display_anilist_results(self, results):
+        """Display AniList search results with thumbnails."""
+        # Clear
+        while (child := self.results_box.get_first_child()):
+            self.results_box.remove(child)
+        
+        if not results:
+            self.search_status.set_text("No results found.")
+            return
+
+        self.search_status.set_text(f"Found {len(results)} result(s) with rich details.")
+        
+        # Show results with thumbnails
+        for anime in results:
+            result_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+            
+            # Thumbnail
+            thumbnail = Gtk.Image()
+            thumbnail.set_pixel_size(60)
+            thumbnail.add_css_class("anime-thumbnail")
+            
+            # Load thumbnail asynchronously with error handling
+            cover_url = anime.get('coverImage', {}).get('medium')
+            if cover_url:
+                def load_thumbnail_async(url, img_widget):
+                    try:
+                        pixbuf = self.thumbnail_cache.download_and_cache_pixbuf(url, 60, 90)
+                        if pixbuf:
+                            GLib.idle_add(lambda: img_widget.set_from_pixbuf(pixbuf))
+                    except Exception as e:
+                        print(f"Failed to load thumbnail for {url}: {e}")
+                        GLib.idle_add(lambda: img_widget.set_from_icon_name("video-display-symbolic"))
+                
+                thread = threading.Thread(target=load_thumbnail_async, args=(cover_url, thumbnail), daemon=True)
+                thread.start()
+            else:
+                thumbnail.set_from_icon_name("video-display-symbolic")
+                thumbnail.set_pixel_size(32)
+            
+            result_box.append(thumbnail)
+            
+            # Text info
+            text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            
+            # Title
+            title = anime.get('title', {}).get('english') or anime.get('title', {}).get('romaji') or 'Unknown'
+            title_label = Gtk.Label(label=title)
+            title_label.set_halign(Gtk.Align.START)
+            title_label.add_css_class("anime-title")
+            text_box.append(title_label)
+            
+            # Details
+            details_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+            
+            episodes = anime.get('episodes', 'Unknown')
+            episodes_label = Gtk.Label(label=f"📺 {episodes} episodes")
+            episodes_label.add_css_class("dim-label")
+            details_box.append(episodes_label)
+            
+            if anime.get('averageScore'):
+                score_label = Gtk.Label(label=f"⭐ {anime['averageScore']}%")
+                score_label.add_css_class("dim-label")
+                details_box.append(score_label)
+            
+            if anime.get('season') and anime.get('seasonYear'):
+                season_label = Gtk.Label(label=f"{anime['season']} {anime['seasonYear']}")
+                season_label.add_css_class("dim-label")
+                details_box.append(season_label)
+            
+            text_box.append(details_box)
+            result_box.append(text_box)
+            
+            btn = Gtk.Button()
+            btn.set_child(result_box)
+            btn.add_css_class("list-item")
+            btn.set_hexpand(True)
+            btn.connect("clicked", lambda b, a=anime: self.on_anilist_selected(a))
+            self.results_box.append(btn)
+    
+    def on_anilist_selected(self, anime: dict):
+        """Handle selection of AniList anime result."""
+        # Convert AniList format to ani-cli format
+        title = anime.get('title', {}).get('english') or anime.get('title', {}).get('romaji') or 'Unknown'
+        
+        # Create a compatible anime dict for the existing streaming code
+        compatible_anime = {
+            'name': title,
+            'episodes': anime.get('episodes', 0),
+            '_id': f"anilist_{anime['id']}",  # Use AniList ID with prefix
+            'anilist_data': anime  # Store full data for later use
+        }
+        
+        self.on_anime_selected(compatible_anime)
+    
     def on_anime_selected(self, anime: dict):
         """Selected an anime - show details and episodes."""
         self.current_anime = anime
@@ -525,7 +645,20 @@ class AniGuiWindow(Gtk.ApplicationWindow):
         
         # Fetch episodes
         def fetch_thread():
-            episodes = self.streamer.get_episodes(anime['_id'])
+            # If this is an AniList result, search by title
+            if anime.get('_id', '').startswith('anilist_'):
+                search_results = self.streamer.search_anime(anime['name'])
+                if search_results:
+                    # Use the first match
+                    actual_anime = search_results[0]
+                    self.current_anime = actual_anime  # Update with actual streaming data
+                    episodes = self.streamer.get_episodes(actual_anime['_id'])
+                else:
+                    episodes = []
+            else:
+                # Regular ani-cli result
+                episodes = self.streamer.get_episodes(anime['_id'])
+            
             GLib.idle_add(self.display_episodes, episodes)
         
         thread = threading.Thread(target=fetch_thread, daemon=True)
@@ -610,19 +743,41 @@ class AniGuiWindow(Gtk.ApplicationWindow):
     
     def load_recommendations(self):
         """Load anime recommendations."""
-        # Popular anime with working IDs from AllAnime API
-        popular_anime = [
-            {"_id": "RezHft5pjutwWcE3B", "name": "Death Note", "episodes": 37},
-            {"_id": "GDBxqQvB9MpNqn2ct", "name": "Steins;Gate", "episodes": 24},
-            {"_id": "2oXgpDPd3xKWdgnoz", "name": "Naruto", "episodes": 220},
-            {"_id": "ReooPAxPMsHM4KPMY", "name": "One Piece", "episodes": 1156},
-            {"_id": "GoDoALiHc82Jrmcmh", "name": "Bleach", "episodes": 366},
-            {"_id": "auvmLg2sG4tcmkkuK", "name": "Monster", "episodes": 74},
-        ]
+        # Clear
+        while (child := self.recs_box.get_first_child()):
+            self.recs_box.remove(child)
         
-        import random
-        recs = random.sample(popular_anime, min(6, len(popular_anime)))
+        # Show loading
+        loading = Gtk.Label(label="Loading recommendations...")
+        loading.add_css_class("dim-label")
+        self.recs_box.append(loading)
         
+        def load_thread():
+            # Try to get popular anime from AniList
+            try:
+                popular = self.anilist_api.get_popular_anime(limit=6)
+                if popular:
+                    GLib.idle_add(self.display_recommendations, popular)
+                    return
+            except Exception as e:
+                print(f"Failed to load AniList recommendations: {e}")
+            
+            # Fallback to hardcoded recommendations
+            popular_anime = [
+                {"_id": "RezHft5pjutwWcE3B", "name": "Death Note", "episodes": 37},
+                {"_id": "GDBxqQvB9MpNqn2ct", "name": "Steins;Gate", "episodes": 24},
+                {"_id": "2oXgpDPd3xKWdgnoz", "name": "Naruto", "episodes": 220},
+                {"_id": "ReooPAxPMsHM4KPMY", "name": "One Piece", "episodes": 1156},
+                {"_id": "GoDoALiHc82Jrmcmh", "name": "Bleach", "episodes": 366},
+                {"_id": "auvmLg2sG4tcmkkuK", "name": "Monster", "episodes": 74},
+            ]
+            GLib.idle_add(self.display_recommendations, popular_anime)
+        
+        thread = threading.Thread(target=load_thread, daemon=True)
+        thread.start()
+    
+    def display_recommendations(self, recs):
+        """Display anime recommendations."""
         # Clear
         while (child := self.recs_box.get_first_child()):
             self.recs_box.remove(child)
@@ -642,7 +797,7 @@ class AniGuiWindow(Gtk.ApplicationWindow):
             title_label.set_hexpand(True)
             rec_box.append(title_label)
             
-            episodes_label = Gtk.Label(label=f"{anime['episodes']} eps")
+            episodes_label = Gtk.Label(label=f"{anime.get('episodes', '?')} eps")
             episodes_label.add_css_class("dim-label")
             rec_box.append(episodes_label)
             

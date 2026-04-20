@@ -30,15 +30,11 @@ ani_gui_sources = [
   '__init__.py',
   'main.py',
   'window.py',
+  'ani_cli_direct.py',
+  'gstreamer_player.py',
+  'watch_history.py',
   'anilist_api.py',
   'thumbnail_cache.py',
-  'video_player.py',
-  'search_handler.py',
-  'ani_cli_integration.py',
-  'anime_streamer.py',
-  'media_player.py',
-  'watch_history.py',
-  'watch_interface.py',
 ]
 
 install_data(ani_gui_sources, install_dir: moduledir)
